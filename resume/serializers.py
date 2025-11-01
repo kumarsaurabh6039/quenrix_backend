@@ -1,7 +1,7 @@
 # resume/serializers.py
 from rest_framework import serializers
 
-from resume.models import ProficiencyLevels, SkillsMaster, TechStack
+from resume.models import ProficiencyLevels, SkillCategories, SkillsMaster, TechStack
 
 class ResumeSerializer(serializers.Serializer):
     userId = serializers.CharField(max_length=20)
@@ -31,3 +31,8 @@ class ProficiencyLevelSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProficiencyLevels
         fields = ['proficiencyid', 'levelname']
+
+class SkillCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SkillCategories
+        fields = ['categoryid', 'categoryname']

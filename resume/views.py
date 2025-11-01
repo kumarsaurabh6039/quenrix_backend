@@ -4,10 +4,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from resume.models import ProficiencyLevels, SkillsMaster, TechStack
-from .serializers import ProficiencyLevelSerializer, ResumeSerializer, ResumeResponseSerializer, SkillsMasterSerializer, TechStackSerializer
+from resume.models import ProficiencyLevels, SkillCategories, SkillsMaster, TechStack
+from .serializers import ProficiencyLevelSerializer, ResumeSerializer, ResumeResponseSerializer, SkillCategorySerializer, SkillsMasterSerializer, TechStackSerializer
 import json
 
+from rest_framework.decorators import api_view
 
 class CreateOrUpdateResumeView(APIView):
     """
@@ -126,3 +127,20 @@ class AddProficiencyView(APIView):
             serializer.save()
             return Response({"message": "Proficiency Level added successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+# ✅ Fetch all categories
+@api_view(['GET'])
+def get_skill_categories(request):
+    categories = SkillCategories.objects.all()
+    serializer = SkillCategorySerializer(categories, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+# ✅ Add a new category
+@api_view(['POST'])
+def add_skill_category(request):
+    serializer = SkillCategorySerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
