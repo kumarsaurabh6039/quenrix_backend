@@ -10,38 +10,38 @@ import json
 
 from rest_framework.decorators import api_view
 
-class CreateOrUpdateResumeView(APIView):
-    """
-    Calls stored procedure: sp_create_resume
-    """
+# class CreateOrUpdateResumeView(APIView):
+#     """
+#     Calls stored procedure: sp_create_resume
+#     """
 
-    def post(self, request):
-        serializer = ResumeSerializer(data=request.data)
-        if serializer.is_valid():
-            data = serializer.validated_data
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        EXEC sp_create_resume 
-                            @userId=%s,
-                            @personalInfo=%s,
-                            @education=%s,
-                            @experience=%s,
-                            @skills=%s,
-                            @projects=%s
-                    """, [
-                        data.get("userId"),
-                        json.dumps(data.get("personalInfo")) if data.get("personalInfo") else None,
-                        json.dumps(data.get("education")) if data.get("education") else None,
-                        json.dumps(data.get("experience")) if data.get("experience") else None,
-                        json.dumps(data.get("skills")) if data.get("skills") else None,
-                        json.dumps(data.get("projects")) if data.get("projects") else None,
-                    ])
-                    result = cursor.fetchall()
-                return Response({"message": "✅ Resume created/updated successfully"}, status=status.HTTP_200_OK)
-            except Exception as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#     def post(self, request):
+#         serializer = ResumeSerializer(data=request.data)
+#         if serializer.is_valid():
+#             data = serializer.validated_data
+#             try:
+#                 with connection.cursor() as cursor:
+#                     cursor.execute("""
+#                         EXEC sp_create_resume 
+#                             @userId=%s,
+#                             @personalInfo=%s,
+#                             @education=%s,
+#                             @experience=%s,
+#                             @skills=%s,
+#                             @projects=%s
+#                     """, [
+#                         data.get("userId"),
+#                         json.dumps(data.get("personalInfo")) if data.get("personalInfo") else None,
+#                         json.dumps(data.get("education")) if data.get("education") else None,
+#                         json.dumps(data.get("experience")) if data.get("experience") else None,
+#                         json.dumps(data.get("skills")) if data.get("skills") else None,
+#                         json.dumps(data.get("projects")) if data.get("projects") else None,
+#                     ])
+#                     result = cursor.fetchall()
+#                 return Response({"message": "✅ Resume created/updated successfully"}, status=status.HTTP_200_OK)
+#             except Exception as e:
+#                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class GetResumeView(APIView):
@@ -77,6 +77,47 @@ class GetResumeView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
+
+class CreateOrUpdateResumeView(APIView):
+    """
+    Creates or updates a user's resume.
+    Calls stored procedure: sp_create_resume
+    """
+
+    def post(self, request):
+        serializer = ResumeSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        EXEC sp_create_resume 
+                            @userId=%s,
+                            @personalInfo=%s,
+                            @education=%s,
+                            @experience=%s,
+                            @skills=%s,
+                            @projects=%s
+                    """, [
+                        data.get("userId"),
+                        json.dumps(data.get("personalInfo")) if data.get("personalInfo") else None,
+                        json.dumps(data.get("education")) if data.get("education") else None,
+                        json.dumps(data.get("experience")) if data.get("experience") else None,
+                        json.dumps(data.get("skills")) if data.get("skills") else None,
+                        json.dumps(data.get("projects")) if data.get("projects") else None,
+                    ])
+                    result = cursor.fetchone()
+                
+                return Response(
+                    {"message": result[0] if result else "✅ Resume created or updated successfully"},
+                    status=status.HTTP_200_OK
+                )
+            
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class ResumeSetupDataView(APIView):
     """

@@ -2,7 +2,7 @@
 from django.urls import path
 
 from . import views  # <-- make sure this line is EXACTLY like this
-from .views import AddProficiencyView, AddSkillView, AddTechStackView, CreateOrUpdateResumeView, GetResumeView, ResumeSetupDataView
+from .views import AddProficiencyView, AddSkillView, AddTechStackView, CreateOrUpdateResumeView, GetResumeView, ResumeSetupDataView, CreateOrUpdateResumeView
 
 urlpatterns = [
     path('create-resume/', CreateOrUpdateResumeView.as_view(), name='create_resume'),
