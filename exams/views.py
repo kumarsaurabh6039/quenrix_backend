@@ -11,6 +11,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
 
+
+from django.utils import timezone
+from rest_framework import generics
+from .models import Exams, ExamAttempts
+from .serializers import ExamSerializer, ExamAttemptSerializer
+
+
 class ExamListView(generics.ListAPIView):
     queryset = Exams.objects.all()
     serializer_class = ExamSerializer
@@ -106,3 +113,36 @@ class ExamCreateView(APIView):
                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# 1️⃣ Exams for a student's course and batch
+class StudentExamListView(generics.ListAPIView):
+    serializer_class = ExamSerializer
+
+    def get_queryset(self):
+        course_id = self.kwargs['course_id']
+        batch_id = self.kwargs['batch_id']
+        now = timezone.now()
+
+        # Optional query param: ?status=upcoming|ongoing|past
+        status_filter = self.request.query_params.get('status', 'all')
+
+        queryset = Exams.objects.filter(courseid=course_id, batchid=batch_id, is_active=True)
+
+        if status_filter == 'upcoming':
+            queryset = queryset.filter(start_datetime__gt=now)
+        elif status_filter == 'ongoing':
+            queryset = queryset.filter(start_datetime__lte=now, end_datetime__gte=now)
+        elif status_filter == 'past':
+            queryset = queryset.filter(end_datetime__lt=now)
+
+        return queryset.order_by('start_datetime')
+
+
+# 2️⃣ Get all attempts for a student (optional)
+class StudentExamAttemptListView(generics.ListAPIView):
+    serializer_class = ExamAttemptSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        return ExamAttempts.objects.filter(userid=user_id).order_by('-attemptdate')

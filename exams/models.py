@@ -4,8 +4,6 @@ from courses.models import Courses
 
 # Create your models here.
 
-
-
 class ExamAttempts(models.Model):
     attemptid = models.AutoField(db_column='attemptId', primary_key=True)  # Field name made lowercase.
     examid = models.ForeignKey('Exams', models.DO_NOTHING, db_column='examId', blank=True, null=True)  # Field name made lowercase.

@@ -3,7 +3,9 @@ from django.db import connection
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import ResumeSerializer, ResumeResponseSerializer
+
+from resume.models import ProficiencyLevels, SkillsMaster, TechStack
+from .serializers import ProficiencyLevelSerializer, ResumeSerializer, ResumeResponseSerializer, SkillsMasterSerializer, TechStackSerializer
 import json
 
 
@@ -73,3 +75,54 @@ class GetResumeView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class ResumeSetupDataView(APIView):
+    """
+    Fetches all tech stacks, skills, and proficiency levels
+    to display on resume creation form
+    """
+    def get(self, request):
+        try:
+            tech_stacks = TechStack.objects.all()
+            skills = SkillsMaster.objects.all()
+            proficiencies = ProficiencyLevels.objects.all()
+
+            tech_stack_data = TechStackSerializer(tech_stacks, many=True).data
+            skill_data = SkillsMasterSerializer(skills, many=True).data
+            proficiency_data = ProficiencyLevelSerializer(proficiencies, many=True).data
+
+            return Response({
+                "techStacks": tech_stack_data,
+                "skills": skill_data,
+                "proficiencies": proficiency_data
+            }, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+        
+
+class AddTechStackView(APIView):
+    def post(self, request):
+        serializer = TechStackSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Tech Stack added successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AddSkillView(APIView):
+    def post(self, request):
+        serializer = SkillsMasterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Skill added successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AddProficiencyView(APIView):
+    def post(self, request):
+        serializer = ProficiencyLevelSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Proficiency Level added successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
