@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
 from django.core.mail import send_mail
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 from django.db.models.functions import Cast, Substr
 from django.db.models import IntegerField
 from .models import Users
@@ -134,3 +134,46 @@ class HardDeleteUserView(APIView):
             return Response({'message': f'User {userId} permanently deleted'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginUserView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        # Validation
+        if not username or not password:
+            return Response(
+                {'error': 'Both username and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = Users.objects.select_related('roleid').get(username=username)
+        except Users.DoesNotExist:
+            return Response(
+                {'error': 'Invalid username or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Check if user is active
+        if not user.is_active:
+            return Response(
+                {'error': 'Account is deactivated. Please contact admin.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Verify password
+        if not check_password(password, user.password):
+            return Response(
+                {'error': 'Invalid username or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Login successful
+        return Response({
+            'message': 'Login successful',
+            'userId': user.userid,
+            'username': user.username,
+            'role': user.roleid.rolename if user.roleid else None
+        }, status=status.HTTP_200_OK)
