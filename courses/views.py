@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
-from .models import Courses, SystemSetups
-from .serializers import CourseCreateSerializer, CourseSerializer, CourseUpdateSerializer, SystemSetupSerializer
+from .models import Courses, Subjects, SystemSetups
+from .serializers import CourseCreateSerializer, CourseSerializer, CourseUpdateSerializer, SubjectSerializer, SystemSetupSerializer
 
 class CourseCreateView(APIView):
     def post(self, request):
@@ -139,3 +139,28 @@ class SubjectWiseSystemSetupView(APIView):
             )
         serializer = SystemSetupSerializer(setups, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class CourseWiseSubjectsView(APIView):
+    """
+    Returns all subjects linked to a specific course.
+    """
+    def get(self, request, course_id):
+        try:
+            course = Courses.objects.get(pk=course_id)
+        except Courses.DoesNotExist:
+            return Response(
+                {"error": "Course not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get all subjects linked to the course
+        subjects = Subjects.objects.filter(
+            coursesubjects__courseid=course
+        ).distinct()
+
+        serializer = SubjectSerializer(subjects, many=True)
+        return Response({
+            "course_id": course.courseid,
+            "course_name": course.coursename,
+            "subjects": serializer.data
+        }, status=status.HTTP_200_OK)
