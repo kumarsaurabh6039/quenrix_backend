@@ -205,3 +205,25 @@ class ListAllUsersView(generics.ListAPIView):
         # return queryset.filter(is_active=True) 
         
         return queryset
+    
+
+class ReactivateUserView(APIView):
+    """
+    Reactivate a user (set is_active = 1) by userId.
+    """
+    def post(self, request):
+        userId = request.data.get('userId')
+        if not userId:
+            return Response({'error': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("UPDATE users SET is_active = 1 WHERE userId = %s", [userId])
+
+            return Response(
+                {'message': f'User {userId} reactivated successfully'},
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
