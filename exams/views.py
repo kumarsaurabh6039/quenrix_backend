@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 from rest_framework import generics
 from .models import Exams, Questions, ExamAttempts, StudentAnswers, ExamResults
 from .serializers import (
-    ExamCreateSerializer, ExamSerializer, QuestionSerializer, ExamAttemptSerializer,
-    StudentAnswerSerializer, ExamResultSerializer
+    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer, ExamAttemptSerializer,
+    StudentAnswerSerializer, 
 )
 
 from rest_framework.views import APIView
@@ -13,14 +13,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
 
-
 from django.utils import timezone
 from rest_framework import generics
 from .models import Exams, ExamAttempts
 from .serializers import ExamSerializer, ExamAttemptSerializer
 
-# import openai  # or whichever AI provider you use
-from django.conf import settings
 from django.db.models import Q
 from openai import OpenAI
 
@@ -54,7 +51,7 @@ class StudentAnswerCreateView(generics.CreateAPIView):
 
 class ExamResultListView(generics.ListAPIView):
     queryset = ExamResults.objects.all()
-    serializer_class = ExamResultSerializer
+    serializer_class = ExamResultDetailSerializer
 
 class EvaluateMCQAnswersView(APIView):
     def post(self, request, attempt_id):
@@ -158,40 +155,6 @@ class StudentExamAttemptListView(generics.ListAPIView):
         return ExamAttempts.objects.filter(userid=user_id).order_by('-attemptdate')
 
 
-from django.db.models import Q
-
-# def evaluate_with_ai(question_text, student_answer, max_points):
-#     """
-#     Dummy AI evaluation function.
-#     Replace this later with actual OpenAI or model integration.
-#     """
-#     if not student_answer.strip():
-#         return 0, "No answer provided."
-
-#     # Simple scoring logic for now
-#     score = max_points  # give full marks for testing
-#     feedback = f"Good explanation for: '{question_text}'"
-    
-#     return score, feedback
-
-# def evaluate_with_ai(question_text, student_answer, max_points):
-#     prompt = f"""
-#     Question: {question_text}
-#     Student Answer: {student_answer}
-#     Score out of {max_points}:
-#     Give both a numeric score and brief feedback.
-#     """
-
-#     response = openai.ChatCompletion.create(
-#         model="gpt-4o-mini",
-#         messages=[{"role": "user", "content": prompt}]
-#     )
-
-#     feedback_text = response.choices[0].message.content
-#     # Extract numeric score if present (or use regex)
-#     score = min(max_points, max_points)  # Placeholder logic
-#     return score, feedback_text
-
 def evaluate_with_ai(question_text, student_answer, max_points):
     prompt = f"""
     Question: {question_text}
@@ -287,3 +250,20 @@ class EvaluateAIDescriptiveCodingView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentFinalResultView(generics.ListAPIView):
+    serializer_class = ExamResultDetailSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        exam_id = self.kwargs.get('exam_id', None)
+
+        queryset = ExamResults.objects.filter(
+            attemptid__userid=user_id
+        ).select_related('attemptid__examid')
+
+        if exam_id:
+            queryset = queryset.filter(attemptid__examid=exam_id)
+
+        return queryset.order_by('-updated_at')

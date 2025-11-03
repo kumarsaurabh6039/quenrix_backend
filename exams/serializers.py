@@ -31,10 +31,19 @@ class StudentAnswerSerializer(serializers.ModelSerializer):
         model = StudentAnswers
         fields = '__all__'
 
-class ExamResultSerializer(serializers.ModelSerializer):
+class ExamResultDetailSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='attemptid.examid.examname', read_only=True)
+    attempt_date = serializers.DateTimeField(source='attemptid.attemptdate', read_only=True)
+    user_id = serializers.CharField(source='attemptid.userid_id', read_only=True)
+
     class Meta:
         model = ExamResults
-        fields = '__all__'
+        fields = [
+            'resultid', 'user_id', 'exam_name', 'attempt_date',
+            'total_mcq_score', 'total_descriptive_score',
+            'total_coding_score', 'final_score', 'updated_at'
+        ]
+
 
 
 class ExamCreateSerializer(serializers.Serializer):

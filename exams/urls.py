@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     CalculateExamResultView, EvaluateAIDescriptiveCodingView, EvaluateMCQAnswersView, ExamCreateView, ExamListView, ExamDetailView, QuestionListView,
-    ExamAttemptCreateView, StudentAnswerCreateView, ExamResultListView, StudentExamAttemptListView, StudentExamListView,
+    ExamAttemptCreateView, StudentAnswerCreateView, ExamResultListView, StudentExamAttemptListView, StudentExamListView, StudentFinalResultView,
     
 )
 
@@ -18,5 +18,6 @@ urlpatterns = [
     path('student-exams/<int:course_id>/<int:batch_id>/', StudentExamListView.as_view(), name='student-exam-list'),
     path('student-exam-attempts/<str:user_id>/', StudentExamAttemptListView.as_view(), name='student-exam-attempts'),
     path('evaluate-ai/<int:attempt_id>/', EvaluateAIDescriptiveCodingView.as_view(), name='evaluate-ai'),
-
+    path('results/student/<str:user_id>/', StudentFinalResultView.as_view(), name='student-results'),
+    path('results/student/<str:user_id>/exam/<int:exam_id>/', StudentFinalResultView.as_view(), name='student-exam-result'),
 ]

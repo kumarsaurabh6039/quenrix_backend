@@ -52,7 +52,8 @@ INSTALLED_APPS = [
     'doubts',
     'courses',
     'batches',
-    'drf_yasg'
+    'drf_yasg',
+    'announcements'
 ]
 
 MIDDLEWARE = [

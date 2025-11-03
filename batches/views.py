@@ -102,3 +102,59 @@ class ReactivateBatchView(APIView):
             return Response({'detail': f'Batch {batch_id} reactivated.'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.db import connection
+
+
+class BatchUsersView(APIView):
+    """
+    Get all users (students + trainers) assigned to a batch,
+    including their role name from the Roles table.
+    """
+    def get(self, request, batch_id):
+        try:
+            with connection.cursor() as cursor:
+                # 🧑‍🏫 Trainers
+                cursor.execute("""
+                    SELECT 
+                        u.userId, 
+                        u.username, 
+                        r.roleName
+                    FROM trainer_batches tb
+                    INNER JOIN users u ON u.userId = tb.userId
+                    LEFT JOIN roles r ON u.roleId = r.roleId
+                    WHERE tb.batchId = %s
+                """, [batch_id])
+                trainer_columns = [col[0] for col in cursor.description]
+                trainers = [dict(zip(trainer_columns, row)) for row in cursor.fetchall()]
+
+                # 🧑‍🎓 Students
+                cursor.execute("""
+                    SELECT 
+                        u.userId, 
+                        u.username, 
+                        r.roleName
+                    FROM student_batches sb
+                    INNER JOIN users u ON u.userId = sb.userId
+                    LEFT JOIN roles r ON u.roleId = r.roleId
+                    WHERE sb.batchId = %s
+                """, [batch_id])
+                student_columns = [col[0] for col in cursor.description]
+                students = [dict(zip(student_columns, row)) for row in cursor.fetchall()]
+
+            # ✅ Combine results
+            result = {
+                "batchId": batch_id,
+                "trainers": trainers,
+                "students": students
+            }
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
