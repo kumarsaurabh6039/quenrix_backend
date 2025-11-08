@@ -11,7 +11,7 @@ class RolesSerializer(serializers.ModelSerializer):
 class UsersSerializer(serializers.ModelSerializer):
     username = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, required=True)
-    roleid = serializers.PrimaryKeyRelatedField(queryset=Roles.objects.all(), write_only=True)
+    roleid = serializers.PrimaryKeyRelatedField(queryset=Roles.objects.all())
     role = RolesSerializer(read_only=True)
     userid = serializers.CharField(read_only=True)  # ✅ Prevents validation error
 

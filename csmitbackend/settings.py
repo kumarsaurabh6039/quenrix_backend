@@ -52,7 +52,8 @@ INSTALLED_APPS = [
     'doubts',
     'courses',
     'batches',
-    'drf_yasg'
+    'drf_yasg',
+    'announcements'
 ]
 
 MIDDLEWARE = [
@@ -180,7 +181,7 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "shivkumarmatkawala@gmail.com"
-EMAIL_HOST_PASSWORD = "oxce igqr vlvk lgqo"  # use App Password, not Gmail password
+EMAIL_HOST_PASSWORD = "ifqw brmt ihxm izqg"  # use App Password, not Gmail password
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 

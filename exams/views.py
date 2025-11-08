@@ -1,9 +1,11 @@
 import json
+import os
+from dotenv import load_dotenv
 from rest_framework import generics
 from .models import Exams, Questions, ExamAttempts, StudentAnswers, ExamResults
 from .serializers import (
-    ExamCreateSerializer, ExamSerializer, QuestionSerializer, ExamAttemptSerializer,
-    StudentAnswerSerializer, ExamResultSerializer
+    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer, ExamAttemptSerializer,
+    StudentAnswerSerializer, 
 )
 
 from rest_framework.views import APIView
@@ -11,12 +13,17 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
 
-
 from django.utils import timezone
 from rest_framework import generics
 from .models import Exams, ExamAttempts
 from .serializers import ExamSerializer, ExamAttemptSerializer
 
+from django.db.models import Q
+from openai import OpenAI
+
+# Create a client
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class ExamListView(generics.ListAPIView):
     queryset = Exams.objects.all()
@@ -44,7 +51,7 @@ class StudentAnswerCreateView(generics.CreateAPIView):
 
 class ExamResultListView(generics.ListAPIView):
     queryset = ExamResults.objects.all()
-    serializer_class = ExamResultSerializer
+    serializer_class = ExamResultDetailSerializer
 
 class EvaluateMCQAnswersView(APIView):
     def post(self, request, attempt_id):
@@ -146,3 +153,117 @@ class StudentExamAttemptListView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         return ExamAttempts.objects.filter(userid=user_id).order_by('-attemptdate')
+
+
+def evaluate_with_ai(question_text, student_answer, max_points):
+    prompt = f"""
+    Question: {question_text}
+    Student Answer: {student_answer}
+
+    Evaluate the student's answer.
+    - Give a numeric score out of {max_points}.
+    - Provide short feedback (1–2 sentences).
+    Format:
+    Score: <number>
+    Feedback: <text>
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    feedback_text = response.choices[0].message.content
+
+    # Simple regex extraction for numeric score
+    import re
+    match = re.search(r"Score[:\-]?\s*(\d+)", feedback_text)
+    score = int(match.group(1)) if match else 0
+
+    # Ensure score doesn’t exceed max_points
+    score = min(score, max_points)
+
+    return score, feedback_text
+
+
+class EvaluateAIDescriptiveCodingView(APIView):
+    def post(self, request, attempt_id):
+        try:
+            # 🧠 Debugging info — to check what Django sees
+            print("🔍 Total unevaluated answers:", StudentAnswers.objects.filter(evaluated=False).count())
+            print("🔍 Unevaluated with descriptive answers:",
+                  StudentAnswers.objects.filter(evaluated=False, descriptive_answer__isnull=False))
+
+            # ✅ Fetch only descriptive/coding questions that are not yet evaluated and have content
+            answers = StudentAnswers.objects.filter(
+                attemptid=attempt_id,
+                evaluated=False
+            ).filter(
+                Q(descriptive_answer__isnull=False) | Q(code_answer__isnull=False),
+                questionid__questiontypeid__typename__in=['Descriptive', 'Coding']
+            ).exclude(
+                descriptive_answer=''
+            ).exclude(
+                code_answer=''
+            )
+
+            # 🧩 Check if anything found
+            if not answers.exists():
+                return Response({"message": "No unevaluated descriptive/coding answers found."},
+                                status=status.HTTP_200_OK)
+
+            total_descriptive_score = 0
+            total_coding_score = 0
+
+            for ans in answers:
+                question_text = ans.questionid.questiontext
+                student_answer = ans.descriptive_answer or ans.code_answer or ""
+                max_points = ans.questionid.points or 0
+
+                # 🧠 Call AI evaluation
+                ai_score, ai_feedback = evaluate_with_ai(question_text, student_answer, max_points)
+
+                # ✅ Update fields
+                ans.ai_score = ai_score
+                ans.ai_feedback = ai_feedback
+                ans.points_earned = ai_score
+                ans.evaluated = True
+                ans.updated_at = timezone.now()
+                ans.save()
+
+                if ans.questionid.questiontypeid.typename == "Descriptive":
+                    total_descriptive_score += ai_score
+                elif ans.questionid.questiontypeid.typename == "Coding":
+                    total_coding_score += ai_score
+
+            # ✅ Update or create exam result entry
+            result, created = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
+            result.total_descriptive_score = total_descriptive_score
+            result.total_coding_score = total_coding_score
+            result.save()
+
+            return Response({
+                "message": "AI evaluation complete",
+                "total_descriptive_score": total_descriptive_score,
+                "total_coding_score": total_coding_score
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentFinalResultView(generics.ListAPIView):
+    serializer_class = ExamResultDetailSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        exam_id = self.kwargs.get('exam_id', None)
+
+        queryset = ExamResults.objects.filter(
+            attemptid__userid=user_id
+        ).select_related('attemptid__examid')
+
+        if exam_id:
+            queryset = queryset.filter(attemptid__examid=exam_id)
+
+        return queryset.order_by('-updated_at')

@@ -9,7 +9,7 @@ from django.db.models import IntegerField
 from .models import Users
 from .serializers import UsersSerializer
 from django.conf import settings
-
+from rest_framework import generics
 
 class RegisterUserView(APIView):
     def post(self, request):
@@ -177,3 +177,53 @@ class LoginUserView(APIView):
             'username': user.username,
             'role': user.roleid.rolename if user.roleid else None
         }, status=status.HTTP_200_OK)
+    
+
+# views.py
+
+from rest_framework import generics
+# Ensure you import Users and UsersSerializer
+
+class ListAllUsersView(generics.ListAPIView):
+    """
+    API view to list all users.
+    """
+    # ❌ REMOVE the 'queryset' attribute entirely to avoid the RuntimeError:
+    # queryset = Users.objects.select_related('roleid').all() 
+    
+    serializer_class = UsersSerializer
+
+    def get_queryset(self):
+        """
+        Defines the queryset, ensuring it is evaluated only when the request is processed.
+        """
+        # ✅ CORRECT: Define the queryset and optimizations here. 
+        # DRF will call this method on every request.
+        queryset = Users.objects.select_related('roleid').all()
+        
+        # Optional: Apply filtering logic here, if needed (e.g., only active users)
+        # return queryset.filter(is_active=True) 
+        
+        return queryset
+    
+
+class ReactivateUserView(APIView):
+    """
+    Reactivate a user (set is_active = 1) by userId.
+    """
+    def post(self, request):
+        userId = request.data.get('userId')
+        if not userId:
+            return Response({'error': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("UPDATE users SET is_active = 1 WHERE userId = %s", [userId])
+
+            return Response(
+                {'message': f'User {userId} reactivated successfully'},
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
