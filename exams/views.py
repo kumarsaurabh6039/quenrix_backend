@@ -278,3 +278,82 @@ class StudentBatchByUserIdView(generics.ListAPIView):
         ).select_related('batchid') 
 
         return queryset
+    
+
+class EvaluateCompleteExamView(APIView):
+    """
+    Perform full exam evaluation:
+    - Step 1: Evaluate MCQs via stored procedure.
+    - Step 2: Evaluate Descriptive & Coding via AI.
+    - Step 3: Calculate total exam result and return it.
+    """
+    def post(self, request, attempt_id):
+        try:
+            # === Step 1️⃣ Evaluate MCQs ===
+            with connection.cursor() as cursor:
+                cursor.execute("EXEC sp_evaluate_mcq_answers @attemptId = %s", [attempt_id])
+                columns = [col[0] for col in cursor.description]
+                row = cursor.fetchone()
+                mcq_result = dict(zip(columns, row)) if row else {"message": "No MCQ results."}
+
+            # === Step 2️⃣ Evaluate Descriptive & Coding ===
+            answers = StudentAnswers.objects.filter(
+                attemptid=attempt_id,
+                evaluated=False
+            ).filter(
+                Q(descriptive_answer__isnull=False) | Q(code_answer__isnull=False),
+                questionid__questiontypeid__typename__in=['Descriptive', 'Coding']
+            ).exclude(
+                descriptive_answer=''
+            ).exclude(
+                code_answer=''
+            )
+
+            total_descriptive_score = 0
+            total_coding_score = 0
+
+            for ans in answers:
+                question_text = ans.questionid.questiontext
+                student_answer = ans.descriptive_answer or ans.code_answer or ""
+                max_points = ans.questionid.points or 0
+
+                ai_score, ai_feedback = evaluate_with_ai(question_text, student_answer, max_points)
+
+                ans.ai_score = ai_score
+                ans.ai_feedback = ai_feedback
+                ans.points_earned = ai_score
+                ans.evaluated = True
+                ans.updated_at = timezone.now()
+                ans.save()
+
+                if ans.questionid.questiontypeid.typename == "Descriptive":
+                    total_descriptive_score += ai_score
+                elif ans.questionid.questiontypeid.typename == "Coding":
+                    total_coding_score += ai_score
+
+            # Update or create partial results
+            result, _ = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
+            result.total_descriptive_score = total_descriptive_score
+            result.total_coding_score = total_coding_score
+            result.updated_at = timezone.now()
+            result.save()
+
+            # === Step 3️⃣ Finalize Result Calculation ===
+            with connection.cursor() as cursor:
+                cursor.execute("EXEC sp_calculate_exam_results @attemptId = %s", [attempt_id])
+                columns = [col[0] for col in cursor.description]
+                row = cursor.fetchone()
+                final_result = dict(zip(columns, row)) if row else {"message": "No final result returned."}
+
+            return Response({
+                "message": "✅ Full evaluation completed successfully",
+                "mcq_evaluation": mcq_result,
+                "ai_evaluation": {
+                    "total_descriptive_score": total_descriptive_score,
+                    "total_coding_score": total_coding_score
+                },
+                "final_result": final_result
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
