@@ -1,8 +1,6 @@
 from django.db import models
-from batches.models import Batches
+from batches.models import Batches 
 from courses.models import Courses
-
-# Create your models here.
 
 class ExamAttempts(models.Model):
     attemptid = models.AutoField(db_column='attemptId', primary_key=True)  # Field name made lowercase.
@@ -84,7 +82,7 @@ class Questions(models.Model):
     questionid = models.AutoField(db_column='questionId', primary_key=True)  # Field name made lowercase.
     examid = models.ForeignKey(Exams, models.DO_NOTHING, db_column='examId', blank=True, null=True)  # Field name made lowercase.
     questiontypeid = models.ForeignKey(QuestionTypes, models.DO_NOTHING, db_column='questionTypeId', blank=True, null=True)  # Field name made lowercase.
-    questiontext = models.TextField(db_column='questionText', db_collation='SQL_Latin1_General_CP1_CI_AS', blank=True, null=True)  # Field name made lowercase.
+    questiontext = models.TextField(db_collation='SQL_Latin1_General_CP1_CI_AS', blank=True, null=True)  # Field name made lowercase.
     points = models.IntegerField(blank=True, null=True)
 
     class Meta:
@@ -110,4 +108,29 @@ class StudentAnswers(models.Model):
     class Meta:
         managed = False
         db_table = 'student_answers'
+        
 
+class StudentBatches(models.Model):
+    studentbatchid = models.AutoField(db_column='studentBatchId', primary_key=True)  
+    userid = models.ForeignKey(
+        'users.Users', 
+        models.DO_NOTHING, 
+        db_column='userId', 
+        blank=True, 
+        null=True,
+        related_name='exams_student_batches_user' 
+    )  
+    
+    batchid = models.ForeignKey(
+        Batches, 
+        models.DO_NOTHING, 
+        db_column='batchId', 
+        blank=True, 
+        null=True,
+        related_name='exams_student_batches_batch' 
+    )  
+
+    class Meta:
+        managed = False
+        db_table = 'student_batches'
+        

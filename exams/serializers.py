@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Exams, Questions, Options, ExamAttempts, StudentAnswers, ExamResults
+from .models import Exams, Questions, Options, ExamAttempts, StudentAnswers, ExamResults, StudentBatches # ✅ StudentBatches को import किया गया
 
 class OptionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -54,3 +54,11 @@ class ExamCreateSerializer(serializers.Serializer):
     start = serializers.DateTimeField()
     end = serializers.DateTimeField()
     questions = serializers.ListField(child=serializers.DictField())
+class StudentBatchSerializer(serializers.ModelSerializer):
+    batch_name = serializers.CharField(source='batchid.batchName', read_only=True) 
+    course_id = serializers.IntegerField(source='batchid.courseid_id', read_only=True)
+
+    class Meta:
+        model = StudentBatches
+        fields = ['studentbatchid', 'batchid', 'userid', 'batch_name', 'course_id'] 
+        
