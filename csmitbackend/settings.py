@@ -98,7 +98,7 @@ DATABASES = {
         'HOST': 'database-3.c108mwc4upfa.ap-south-1.rds.amazonaws.com',  # From Secrets Manager
         'PORT': '1433',
         'USER': 'admin',  # From Secrets Manager
-        'PASSWORD': 'bNhcT5tBQpxp5WO<HOEv#jW3WS~y',  # From Secrets Manager
+        'PASSWORD': 'ZK4Zhpc]Bn#lqY.O.UXMKQyl?3gV',  # From Secrets Manager
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
         },
@@ -181,7 +181,7 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "shivkumarmatkawala@gmail.com"
-EMAIL_HOST_PASSWORD = "oxce igqr vlvk lgqo"  # use App Password, not Gmail password
+EMAIL_HOST_PASSWORD = "ifqw brmt ihxm izqg"  # use App Password, not Gmail password
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
