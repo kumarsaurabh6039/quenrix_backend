@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     CalculateExamResultView, EvaluateAIDescriptiveCodingView, EvaluateMCQAnswersView, ExamCreateView, ExamListView, ExamDetailView, QuestionListView,
     ExamAttemptCreateView, StudentAnswerCreateView, ExamResultListView, StudentExamAttemptListView, StudentExamListView, StudentFinalResultView,
-    StudentBatchByUserIdView
+    StudentBatchByUserIdView, EvaluateCompleteExamView, StudentAnswerDetailListView # <-- NEW: यह नया व्यू imported है
 )
 
 urlpatterns = [
@@ -21,4 +21,6 @@ urlpatterns = [
     path('evaluate-ai/<int:attempt_id>/', EvaluateAIDescriptiveCodingView.as_view(), name='evaluate-ai'),
     path('results/student/<str:user_id>/', StudentFinalResultView.as_view(), name='student-results'),
     path('results/student/<str:user_id>/exam/<int:exam_id>/', StudentFinalResultView.as_view(), name='student-exam-result'),
+    path('evaluate-complete/<int:attempt_id>/', EvaluateCompleteExamView.as_view(), name='evaluate-complete'),
+    path('results/answers/<int:attempt_id>/', StudentAnswerDetailListView.as_view(), name='student-answer-details'), 
 ]

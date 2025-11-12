@@ -1,29 +1,116 @@
 import json
 import os
+import re
 from dotenv import load_dotenv
-from rest_framework import generics
-from .models import Exams, Questions, ExamAttempts, StudentAnswers, ExamResults, StudentBatches 
-from .serializers import (
-    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer, ExamAttemptSerializer,
-    StudentAnswerSerializer, StudentBatchSerializer 
-)
+from decimal import Decimal 
+from openai import OpenAI
+from django.db import connection
+from django.db.models import Q, Sum 
+from django.utils import timezone
 
+# --- REST Framework Imports ---
+from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import connection
 
-from django.utils import timezone
-from rest_framework import generics
-from .models import Exams, ExamAttempts
-from .serializers import ExamSerializer, ExamAttemptSerializer
+# --- Local Models Imports ---
+from .models import (
+    Exams, Questions, ExamAttempts, StudentAnswers, ExamResults, 
+    StudentBatches, Options, QuestionTypes 
+) 
 
-from django.db.models import Q
-from openai import OpenAI
+# --- Serializers ---
+from .serializers import (
+    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer, 
+    ExamAttemptSerializer, StudentAnswerSerializer, StudentBatchSerializer 
+)
 
-# Create a client
+# --- Configuration ---
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+# =========================================================================================
+# === CORE EVALUATION FUNCTIONS ===
+# =========================================================================================
+
+def evaluate_mcq_orm(attempt_id):
+    """Evaluates MCQ answers and updates StudentAnswers records."""
+    mcq_answers = StudentAnswers.objects.filter(
+        attemptid=attempt_id,
+        selectedoptionid__isnull=False 
+    ).select_related('questionid', 'selectedoptionid')
+
+    for answer in mcq_answers:
+        is_correct = False
+        try:
+            # Check if student's selection matches the correct option (iscorrect=True)
+            Options.objects.get(
+                optionid=answer.selectedoptionid.optionid, 
+                iscorrect=True 
+            )
+            is_correct = True
+        except Options.DoesNotExist:
+            is_correct = False
+
+        question_points = Decimal(answer.questionid.points or 0)
+        points_earned = question_points if is_correct else Decimal(0)
+        
+        answer.is_correct = is_correct
+        answer.points_earned = points_earned
+        answer.evaluated = True 
+        answer.updated_at = timezone.now()
+        answer.save()
+        
+    # Mark unanswered MCQs as evaluated with 0 points
+    StudentAnswers.objects.filter(
+        attemptid=attempt_id,
+        selectedoptionid__isnull=True, 
+        questionid__questiontypeid=1 
+    ).update(points_earned=Decimal(0), evaluated=True)
+    
+    return True
+
+def evaluate_with_ai(question_text, student_answer, max_points):
+    """Evaluates descriptive/coding answers using AI."""
+    
+    if not student_answer or student_answer.strip() == "":
+        return 0.0, "No answer provided by the student."
+
+    prompt = f"""
+    Question: {question_text}
+    Student Answer: {student_answer}
+
+    Evaluate the student's answer.
+    - Give a numeric score out of {max_points}. The score must not exceed {max_points}.
+    - Provide short feedback (1–2 sentences).
+    Format:
+    Score: <number>
+    Feedback: <text>
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        feedback_text = response.choices[0].message.content
+        match = re.search(r"Score[:\-]?\s*(\d+(\.\d+)?)", feedback_text) 
+        score = float(match.group(1)) if match else 0.0
+
+    except Exception as e:
+        print(f"OpenAI API Error: {e}")
+        return 0.0, "AI evaluation failed due to API error."
+
+    score = max(0.0, min(score, max_points))
+
+    return score, feedback_text
+
+# =========================================================================================
+# === DJANGO VIEWS ===
+# =========================================================================================
 
 class ExamListView(generics.ListAPIView):
     queryset = Exams.objects.all()
@@ -39,7 +126,7 @@ class QuestionListView(generics.ListAPIView):
 
     def get_queryset(self):
         exam_id = self.kwargs['examid']
-        return Questions.objects.filter(examid=exam_id)
+        return Questions.objects.filter(examid=exam_id).select_related('questiontypeid') 
 
 class ExamAttemptCreateView(generics.CreateAPIView):
     queryset = ExamAttempts.objects.all()
@@ -56,13 +143,8 @@ class ExamResultListView(generics.ListAPIView):
 class EvaluateMCQAnswersView(APIView):
     def post(self, request, attempt_id):
         try:
-            with connection.cursor() as cursor:
-                cursor.execute("EXEC sp_evaluate_mcq_answers @attemptId = %s", [attempt_id])
-                columns = [col[0] for col in cursor.description]
-                row = cursor.fetchone()
-                result = dict(zip(columns, row)) if row else {"message": "No result returned."}
-
-            return Response(result, status=status.HTTP_200_OK)
+            evaluate_mcq_orm(attempt_id)
+            return Response({"message": "MCQ evaluation complete."}, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -71,14 +153,24 @@ class EvaluateMCQAnswersView(APIView):
 class CalculateExamResultView(APIView):
     def post(self, request, attempt_id):
         try:
+            total_score_data = StudentAnswers.objects.filter(
+                attemptid=attempt_id
+            ).aggregate(
+                total_earned=Sum('points_earned')
+            )
+            final_score = total_score_data.get('total_earned') or Decimal(0)
+            
+            final_attempt = ExamAttempts.objects.get(attemptid=attempt_id)
+            final_attempt.total_score = final_score
+            final_attempt.save()
+
             with connection.cursor() as cursor:
                 cursor.execute("EXEC sp_calculate_exam_results @attemptId = %s", [attempt_id])
-                columns = [col[0] for col in cursor.description]
-                row = cursor.fetchone()
-                result = dict(zip(columns, row)) if row else {"message": "No result returned."}
 
-            return Response(result, status=status.HTTP_200_OK)
+            return Response({"Message": "Exam results updated successfully.", "total_score": final_score}, status=status.HTTP_200_OK)
 
+        except ExamAttempts.DoesNotExist:
+            return Response({"error": f"Attempt ID {attempt_id} not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -101,15 +193,15 @@ class ExamCreateView(APIView):
                             @start = %s,
                             @end = %s,
                             @questions = %s
-                    """, [
-                        data.get('examName'),
-                        data['courseId'],
-                        data['batchId'],
-                        data['subjectId'],
-                        data['start'],
-                        data['end'],
-                        questions_json
-                    ])
+                        """, [
+                            data.get('examName'),
+                            data['courseId'],
+                            data['batchId'],
+                            data['subjectId'],
+                            data['start'],
+                            data['end'],
+                            questions_json
+                        ])
                     columns = [col[0] for col in cursor.description]
                     row = cursor.fetchone()
                     result = dict(zip(columns, row)) if row else {}
@@ -122,7 +214,6 @@ class ExamCreateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# 1️⃣ Exams for a student's course and batch
 class StudentExamListView(generics.ListAPIView):
     serializer_class = ExamSerializer
 
@@ -131,7 +222,6 @@ class StudentExamListView(generics.ListAPIView):
         batch_id = self.kwargs['batch_id']
         now = timezone.now()
 
-        # Optional query param: ?status=upcoming|ongoing|past
         status_filter = self.request.query_params.get('status', 'all')
 
         queryset = Exams.objects.filter(courseid=course_id, batchid=batch_id, is_active=True)
@@ -146,7 +236,6 @@ class StudentExamListView(generics.ListAPIView):
         return queryset.order_by('start_datetime')
 
 
-# 2️⃣ Get all attempts for a student (optional)
 class StudentExamAttemptListView(generics.ListAPIView):
     serializer_class = ExamAttemptSerializer
 
@@ -155,101 +244,10 @@ class StudentExamAttemptListView(generics.ListAPIView):
         return ExamAttempts.objects.filter(userid=user_id).order_by('-attemptdate')
 
 
-def evaluate_with_ai(question_text, student_answer, max_points):
-    prompt = f"""
-    Question: {question_text}
-    Student Answer: {student_answer}
-
-    Evaluate the student's answer.
-    - Give a numeric score out of {max_points}.
-    - Provide short feedback (1–2 sentences).
-    Format:
-    Score: <number>
-    Feedback: <text>
-    """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    feedback_text = response.choices[0].message.content
-
-    # Simple regex extraction for numeric score
-    import re
-    match = re.search(r"Score[:\-]?\s*(\d+)", feedback_text)
-    score = int(match.group(1)) if match else 0
-
-    # Ensure score doesn’t exceed max_points
-    score = min(score, max_points)
-
-    return score, feedback_text
-
-
 class EvaluateAIDescriptiveCodingView(APIView):
+    # This endpoint is deprecated, all logic is in EvaluateCompleteExamView
     def post(self, request, attempt_id):
-        try:
-            # 🧠 Debugging info — to check what Django sees
-            print("🔍 Total unevaluated answers:", StudentAnswers.objects.filter(evaluated=False).count())
-            print("🔍 Unevaluated with descriptive answers:",
-                  StudentAnswers.objects.filter(evaluated=False, descriptive_answer__isnull=False))
-
-            # ✅ Fetch only descriptive/coding questions that are not yet evaluated and have content
-            answers = StudentAnswers.objects.filter(
-                attemptid=attempt_id,
-                evaluated=False
-            ).filter(
-                Q(descriptive_answer__isnull=False) | Q(code_answer__isnull=False),
-                questionid__questiontypeid__typename__in=['Descriptive', 'Coding']
-            ).exclude(
-                descriptive_answer=''
-            ).exclude(
-                code_answer=''
-            )
-
-            # 🧩 Check if anything found
-            if not answers.exists():
-                return Response({"message": "No unevaluated descriptive/coding answers found."},
-                                status=status.HTTP_200_OK)
-
-            total_descriptive_score = 0
-            total_coding_score = 0
-
-            for ans in answers:
-                question_text = ans.questionid.questiontext
-                student_answer = ans.descriptive_answer or ans.code_answer or ""
-                max_points = ans.questionid.points or 0
-
-                # 🧠 Call AI evaluation
-                ai_score, ai_feedback = evaluate_with_ai(question_text, student_answer, max_points)
-
-                # ✅ Update fields
-                ans.ai_score = ai_score
-                ans.ai_feedback = ai_feedback
-                ans.points_earned = ai_score
-                ans.evaluated = True
-                ans.updated_at = timezone.now()
-                ans.save()
-
-                if ans.questionid.questiontypeid.typename == "Descriptive":
-                    total_descriptive_score += ai_score
-                elif ans.questionid.questiontypeid.typename == "Coding":
-                    total_coding_score += ai_score
-
-            # ✅ Update or create exam result entry
-            result, created = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
-            result.total_descriptive_score = total_descriptive_score
-            result.total_coding_score = total_coding_score
-            result.save()
-
-            return Response({
-                "message": "AI evaluation complete",
-                "total_descriptive_score": total_descriptive_score,
-                "total_coding_score": total_coding_score
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "This endpoint is now deprecated. Use evaluate-complete/."}, status=status.HTTP_200_OK)
 
 
 class StudentFinalResultView(generics.ListAPIView):
@@ -278,39 +276,60 @@ class StudentBatchByUserIdView(generics.ListAPIView):
         ).select_related('batchid') 
 
         return queryset
+class StudentAnswerDetailListView(APIView):
+    """Retrieves detailed student answers including AI score and feedback for an attempt."""
+    def get(self, request, attempt_id):
+        try:
+            queryset = StudentAnswers.objects.filter(
+                attemptid=attempt_id,
+                questionid__questiontypeid__in=[2, 3] 
+            ).select_related('questionid')
+
+            results = []
+            for answer in queryset:
+                if answer.evaluated and (answer.descriptive_answer or answer.code_answer):
+                    results.append({
+                        'questionid': answer.questionid.questionid,
+                        'question_text': answer.questionid.questiontext,
+                        'question_type_id': answer.questionid.questiontypeid_id,
+                        'student_answer': answer.descriptive_answer or answer.code_answer or "No answer submitted.",
+                        'ai_score': float(answer.ai_score) if answer.ai_score else 0.0,
+                        'ai_feedback': answer.ai_feedback or "AI feedback not available.",
+                        'points_earned': float(answer.points_earned) if answer.points_earned else 0.0,
+                        'max_points': answer.questionid.points
+                    })
+            
+            return Response(results, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
 
 class EvaluateCompleteExamView(APIView):
-    """
-    Perform full exam evaluation:
-    - Step 1: Evaluate MCQs via stored procedure.
-    - Step 2: Evaluate Descriptive & Coding via AI.
-    - Step 3: Calculate total exam result and return it.
-    """
     def post(self, request, attempt_id):
         try:
-            # === Step 1️⃣ Evaluate MCQs ===
-            with connection.cursor() as cursor:
-                cursor.execute("EXEC sp_evaluate_mcq_answers @attemptId = %s", [attempt_id])
-                columns = [col[0] for col in cursor.description]
-                row = cursor.fetchone()
-                mcq_result = dict(zip(columns, row)) if row else {"message": "No MCQ results."}
-
-            # === Step 2️⃣ Evaluate Descriptive & Coding ===
+            # === Step 1: Evaluate MCQs ===
+            evaluate_mcq_orm(attempt_id)
+            
+            # === Step 2: Evaluate Descriptive & Coding (AI) ===
+            
+            # Filter for non-evaluated answers (False or null) that have text/code content
             answers = StudentAnswers.objects.filter(
-                attemptid=attempt_id,
-                evaluated=False
+                attemptid=attempt_id
+            ).filter(
+                Q(evaluated=False) | Q(evaluated__isnull=True)
             ).filter(
                 Q(descriptive_answer__isnull=False) | Q(code_answer__isnull=False),
-                questionid__questiontypeid__typename__in=['Descriptive', 'Coding']
+                questionid__questiontypeid__in=[2, 3] # Type 2: Descriptive, 3: Coding
             ).exclude(
                 descriptive_answer=''
             ).exclude(
                 code_answer=''
-            )
+            ).select_related('questionid', 'questionid__questiontypeid')
 
-            total_descriptive_score = 0
-            total_coding_score = 0
+
+            total_descriptive_score = Decimal(0)
+            total_coding_score = Decimal(0)
 
             for ans in answers:
                 question_text = ans.questionid.questiontext
@@ -319,41 +338,65 @@ class EvaluateCompleteExamView(APIView):
 
                 ai_score, ai_feedback = evaluate_with_ai(question_text, student_answer, max_points)
 
-                ans.ai_score = ai_score
+                try:
+                    ai_score_decimal = Decimal(ai_score)
+                except Exception:
+                    ai_score_decimal = Decimal(0)
+
+                ans.ai_score = ai_score_decimal
                 ans.ai_feedback = ai_feedback
-                ans.points_earned = ai_score
+                ans.points_earned = ai_score_decimal
                 ans.evaluated = True
                 ans.updated_at = timezone.now()
                 ans.save()
+                
+                question_type_id = ans.questionid.questiontypeid_id
+                if question_type_id == 2:
+                    total_descriptive_score += ai_score_decimal
+                elif question_type_id == 3:
+                    total_coding_score += ai_score_decimal
+                
+            # Update ExamResults with partial scores
+            result_obj, _ = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
+            result_obj.total_descriptive_score = total_descriptive_score
+            result_obj.total_coding_score = total_coding_score
+            result_obj.updated_at = timezone.now()
+            result_obj.save()
 
-                if ans.questionid.questiontypeid.typename == "Descriptive":
-                    total_descriptive_score += ai_score
-                elif ans.questionid.questiontypeid.typename == "Coding":
-                    total_coding_score += ai_score
 
-            # Update or create partial results
-            result, _ = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
-            result.total_descriptive_score = total_descriptive_score
-            result.total_coding_score = total_coding_score
-            result.updated_at = timezone.now()
-            result.save()
+            # === Step 3: Finalize Result Calculation ===
+            
+            total_score_data = StudentAnswers.objects.filter(
+                attemptid=attempt_id
+            ).aggregate(
+                total_earned=Sum('points_earned')
+            )
+            final_score = total_score_data.get('total_earned') or Decimal(0)
+            
+            # Update ExamAttempts with final score
+            try:
+                final_attempt = ExamAttempts.objects.get(attemptid=attempt_id)
+                final_attempt.total_score = final_score
+                final_attempt.save()
+            except ExamAttempts.DoesNotExist:
+                return Response({"error": f"Attempt ID {attempt_id} not found during final scoring."}, status=status.HTTP_404_NOT_FOUND)
 
-            # === Step 3️⃣ Finalize Result Calculation ===
             with connection.cursor() as cursor:
                 cursor.execute("EXEC sp_calculate_exam_results @attemptId = %s", [attempt_id])
-                columns = [col[0] for col in cursor.description]
-                row = cursor.fetchone()
-                final_result = dict(zip(columns, row)) if row else {"message": "No final result returned."}
+            
+            # Calculate Max Score
+            max_score_qs = Questions.objects.filter(examid=final_attempt.examid_id)
+            max_score_data = max_score_qs.aggregate(Sum('points'))
+            max_score = max_score_data.get('points__sum') or 0
+            max_score_int = int(max_score)
 
             return Response({
-                "message": "✅ Full evaluation completed successfully",
-                "mcq_evaluation": mcq_result,
-                "ai_evaluation": {
-                    "total_descriptive_score": total_descriptive_score,
-                    "total_coding_score": total_coding_score
-                },
-                "final_result": final_result
+                "attemptid": final_attempt.attemptid,
+                "total_score": final_score, 
+                "max_score": max_score_int,
+                "status_message": f"Results processed. Score: {final_score:.2f}/{max_score_int}"
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            print(f"CRITICAL EVALUATION ERROR: {e}")
+            return Response({"error": "Full evaluation process failed.", "detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
