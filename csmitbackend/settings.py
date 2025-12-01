@@ -98,7 +98,7 @@ DATABASES = {
         'HOST': 'database-3.c108mwc4upfa.ap-south-1.rds.amazonaws.com',  # From Secrets Manager
         'PORT': '1433',
         'USER': 'admin',  # From Secrets Manager
-        'PASSWORD': 'C(1)PrgBeYJED9F>FbX?6It:B8_j',  # From Secrets Manager
+        'PASSWORD': ':)VSt>[3_Zb6R46r]6?o9B6Rgdvu',  # From Secrets Manager
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
         },
