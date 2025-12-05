@@ -51,6 +51,7 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
     path('api/chatbot/', include('chatbot.urls')),
-
-    
+    # new added by saurabh
+    path('api/', include('inquiries.urls')),
+    path('api/', include('success_stories.urls')),
 ]

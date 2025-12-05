@@ -53,7 +53,9 @@ INSTALLED_APPS = [
     'courses',
     'batches',
     'drf_yasg',
-    'announcements'
+    'announcements',
+    'inquiries',
+    'success_stories'
 ]
 
 MIDDLEWARE = [
@@ -98,7 +100,7 @@ DATABASES = {
         'HOST': 'database-3.c108mwc4upfa.ap-south-1.rds.amazonaws.com',  # From Secrets Manager
         'PORT': '1433',
         'USER': 'admin',  # From Secrets Manager
-        'PASSWORD': ':)VSt>[3_Zb6R46r]6?o9B6Rgdvu',  # From Secrets Manager
+        'PASSWORD': '-E.*j1_ZYN4Rd.tjK87(?L|>)yxg',  
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
         },
