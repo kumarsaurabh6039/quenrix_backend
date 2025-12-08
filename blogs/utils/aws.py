@@ -58,3 +58,19 @@ def generate_presigned_download_url(bucket_name, object_key, expiration=3600):
     except ClientError as e:
         print("Error:", e)
         return None
+
+
+
+def generate_presigned_delete_url(bucket_name, object_key, expiration=3600):
+    s3_client = get_s3_client()
+
+    try:
+        url = s3_client.generate_presigned_url(
+            "delete_object",
+            Params={"Bucket": bucket_name, "Key": object_key},
+            ExpiresIn=expiration
+        )
+        return url
+    except ClientError as e:
+        print("Error:", e)
+        return None

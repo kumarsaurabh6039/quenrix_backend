@@ -3,7 +3,7 @@ from rest_framework.response import Response
 
 from blogs.serializers import BlogSerializer
 from .models import Blog
-from .utils.aws import generate_presigned_url
+from .utils.aws import generate_presigned_url, get_s3_client
 
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
@@ -67,3 +67,23 @@ def list_blogs(request):
     blogs = Blog.objects.all().order_by("-uploaded_at")
     serializer = BlogSerializer(blogs, many=True)
     return Response(serializer.data)
+
+
+@api_view(["DELETE"])
+def delete_blog(request, blog_id):
+    try:
+        blog = Blog.objects.get(id=blog_id)
+    except Blog.DoesNotExist:
+        return Response({"error": "Blog not found"}, status=404)
+
+    # Extract object key
+    object_key = blog.pdf_url.split(".amazonaws.com/")[1]
+
+    # Delete from S3
+    s3 = get_s3_client()
+    s3.delete_object(Bucket=BUCKET, Key=object_key)
+
+    # Delete DB record
+    blog.delete()
+
+    return Response({"message": "Blog deleted successfully"})
