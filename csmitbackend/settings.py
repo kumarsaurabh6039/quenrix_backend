@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 import os
 from pathlib import Path
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,7 +56,8 @@ INSTALLED_APPS = [
     'drf_yasg',
     'announcements',
     'inquiries',
-    'success_stories'
+    'success_stories',
+    'blogs'
 ]
 
 MIDDLEWARE = [
@@ -202,3 +204,15 @@ LOGGING = {
         },
     },
 }
+
+
+# For AWS S3 Credentials
+
+env = environ.Env()
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
+
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
+# AWS_REGION = env("AWS_REGION")

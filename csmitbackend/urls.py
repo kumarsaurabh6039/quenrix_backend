@@ -54,4 +54,6 @@ urlpatterns = [
     # new added by saurabh
     path('api/', include('inquiries.urls')),
     path('api/', include('success_stories.urls')),
+
+    path("api/blog/", include("blogs.urls")),
 ]
