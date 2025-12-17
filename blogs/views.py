@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from blogs.serializers import BlogSerializer
 from .models import Blog
 from .utils.aws import generate_presigned_url, get_s3_client
+from .utils.aws import generate_presigned_url, get_s3_client
 
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
