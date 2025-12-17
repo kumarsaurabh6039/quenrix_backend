@@ -57,7 +57,9 @@ INSTALLED_APPS = [
     'announcements',
     'inquiries',
     'success_stories',
-    'blogs'
+    'blogs',
+    'notes',
+    'careers',
 ]
 
 MIDDLEWARE = [

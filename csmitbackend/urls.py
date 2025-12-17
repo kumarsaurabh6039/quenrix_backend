@@ -56,4 +56,7 @@ urlpatterns = [
     path('api/', include('success_stories.urls')),
 
     path("api/blog/", include("blogs.urls")),
+    path('api/notes/', include('notes.urls')),
+    path('api/careers/', include('careers.urls')),
+    
 ]
