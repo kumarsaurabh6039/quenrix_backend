@@ -61,6 +61,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'csmitbackend.wsgi.application'
 
 # Database Configuration
+# Database Configuration
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
@@ -68,7 +69,14 @@ DATABASES = {
         'HOST': 'localhost',
         'USER': '',  
         'PASSWORD': '', 
+        'NAME': 'examDb',
+        'HOST': 'localhost',
+        'USER': '',  
+        'PASSWORD': '', 
         'OPTIONS': {
+            'driver': 'ODBC Driver 18 for SQL Server',
+            'trusted_connection': 'yes',
+            'extra_params': 'TrustServerCertificate=yes;', 
             'driver': 'ODBC Driver 18 for SQL Server',
             'trusted_connection': 'yes',
             'extra_params': 'TrustServerCertificate=yes;', 
@@ -82,6 +90,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 # Internationalization
@@ -90,6 +102,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
+# Static and Media files
 # Static and Media files
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
@@ -109,14 +122,17 @@ CSRF_TRUSTED_ORIGINS = [
 # =================================================================
 
 # Email Settings
+# Email Settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "shivkumarmatkawala@gmail.com"
 EMAIL_HOST_PASSWORD = "ifqw brmt ihxm izqg" 
+EMAIL_HOST_PASSWORD = "ifqw brmt ihxm izqg" 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+# AWS Settings
 # AWS Settings
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))

@@ -58,5 +58,5 @@ urlpatterns = [
     path("api/blog/", include("blogs.urls")),
     path('api/notes/', include('notes.urls')),
     path('api/careers/', include('careers.urls')),
-    
+    path('api/job-applications/', include('job_applications.urls')),
 ]
