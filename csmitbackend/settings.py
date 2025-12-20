@@ -26,7 +26,7 @@ INSTALLED_APPS = [
     'corsheaders',  # Ensure this is here
     'users', 'resume', 'practice', 'jobs', 'exams', 'doubts',
     'courses', 'batches', 'drf_yasg', 'announcements', 'inquiries',
-    'success_stories', 'blogs', 'notes', 'careers',
+    'success_stories', 'blogs', 'notes', 'careers','job_applications',
 ]
 
 MIDDLEWARE = [
