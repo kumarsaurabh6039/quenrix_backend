@@ -23,14 +23,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'corsheaders',  # Ensure this is here
+    'corsheaders',  
     'users', 'resume', 'practice', 'jobs', 'exams', 'doubts',
     'courses', 'batches', 'drf_yasg', 'announcements', 'inquiries',
     'success_stories', 'blogs', 'notes', 'careers','job_applications',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # Sabse upar hona chahiye
+    'corsheaders.middleware.CorsMiddleware',  
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
