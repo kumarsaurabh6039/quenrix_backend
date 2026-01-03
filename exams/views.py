@@ -31,10 +31,6 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# =========================================================================================
-# === CORE EVALUATION FUNCTIONS ===
-# =========================================================================================
-
 def evaluate_mcq_orm(attempt_id):
     """Evaluates MCQ answers and updates StudentAnswers records."""
     mcq_answers = StudentAnswers.objects.filter(

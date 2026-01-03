@@ -1,3 +1,4 @@
+from datetime import timedelta
 import os
 from pathlib import Path
 import environ
@@ -109,11 +110,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ================= CORS & CSRF SETTINGS FOR NGROK =================
-CORS_ALLOW_ALL_ORIGINS = True  # Development ke liye allow all safe hai
+CORS_ALLOW_ALL_ORIGINS = True  
 CORS_ALLOW_CREDENTIALS = True
-
-# CSRF ke liye ngrok ka URL trust karna zaroori hai warna Login nahi hoga
 CSRF_TRUSTED_ORIGINS = [
     "https://unwhistled-stefan-supernotable.ngrok-free.dev",
     "http://localhost:4200",
@@ -139,8 +137,6 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
-
-# MSSQL Version Fixes
 import mssql.base
 mssql.base.DatabaseWrapper._sql_server_versions['v17'] = 2022
 if 'v16' in mssql.base.DatabaseWrapper.data_types_suffix:
@@ -152,3 +148,26 @@ def fake_version(self):
     return 2022
 
 mssql.base.DatabaseWrapper.sql_server_version = property(fake_version)
+
+# settings.py
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'users.authentication.CustomJWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), 
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}

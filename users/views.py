@@ -11,15 +11,23 @@ from .serializers import UsersSerializer
 from django.conf import settings
 from rest_framework import generics
 
+# === IMPORTS ===
+from rest_framework_simplejwt.tokens import RefreshToken
+# ✅ AllowAny import karna zaroori hai public APIs ke liye
+from rest_framework.permissions import IsAuthenticated, AllowAny 
+
 class RegisterUserView(APIView):
+    # ✅ Public Access (Koi bhi register kar sake)
+    permission_classes = [AllowAny]
+
     def post(self, request):
         serializer = UsersSerializer(data=request.data)
         if serializer.is_valid():
             data = serializer.validated_data
-            raw_password = request.data['password']  # original password from request
+            raw_password = request.data['password']
             hashed_password = make_password(raw_password)
             userId = data.get('userid') or self.generate_user_id()
-            role_name = data['roleid'].rolename  # get role name from roleid object
+            role_name = data['roleid'].rolename 
 
             try:
                 with connection.cursor() as cursor:
@@ -81,8 +89,10 @@ LMS Team
         return f"USR{new_number:03d}"
 
 
-
 class UpdatePasswordView(APIView):
+    # Password update ke liye login hona zaroori hai
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         userId = request.data.get('userId')
         raw_password = request.data.get('newPassword')
@@ -103,6 +113,8 @@ class UpdatePasswordView(APIView):
 
 
 class SoftDeleteUserView(APIView):
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:
@@ -116,11 +128,9 @@ class SoftDeleteUserView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# NOTE: This view deletes permanently only those users 
-# have no information in database other than userId, 
-# username, passwrod & roleId..
-
 class HardDeleteUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:
@@ -137,6 +147,8 @@ class HardDeleteUserView(APIView):
 
 
 class LoginUserView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
@@ -169,48 +181,36 @@ class LoginUserView(APIView):
                 {'error': 'Invalid username or password.'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-
-        # Login successful
+        refresh = RefreshToken()
+        refresh['user_id'] = user.userid
+        refresh['role'] = user.roleid.rolename if user.roleid else 'Unknown'
         return Response({
             'message': 'Login successful',
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
             'userId': user.userid,
             'username': user.username,
             'role': user.roleid.rolename if user.roleid else None
         }, status=status.HTTP_200_OK)
-    
 
-# views.py
-
-from rest_framework import generics
-# Ensure you import Users and UsersSerializer
 
 class ListAllUsersView(generics.ListAPIView):
     """
     API view to list all users.
     """
-    # ❌ REMOVE the 'queryset' attribute entirely to avoid the RuntimeError:
-    # queryset = Users.objects.select_related('roleid').all() 
+    # ✅ Protected View (Sirf Logged in users ke liye)
+    permission_classes = [IsAuthenticated]
     
     serializer_class = UsersSerializer
 
     def get_queryset(self):
-        """
-        Defines the queryset, ensuring it is evaluated only when the request is processed.
-        """
-        # ✅ CORRECT: Define the queryset and optimizations here. 
-        # DRF will call this method on every request.
         queryset = Users.objects.select_related('roleid').all()
-        
-        # Optional: Apply filtering logic here, if needed (e.g., only active users)
-        # return queryset.filter(is_active=True) 
-        
         return queryset
-    
+
 
 class ReactivateUserView(APIView):
-    """
-    Reactivate a user (set is_active = 1) by userId.
-    """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:

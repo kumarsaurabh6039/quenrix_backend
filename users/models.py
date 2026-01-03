@@ -37,6 +37,15 @@ class Users(models.Model):
     )
     is_active = models.BooleanField(blank=True, null=True, default=True)
 
+    # ✅ ADD THESE PROPERTIES FOR COMPATIBILITY
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
     class Meta:
         managed = False  # keep since table already exists
         db_table = 'users'
@@ -65,7 +74,6 @@ class Users(models.Model):
     def save(self, *args, **kwargs):
         """Auto-generate userId like USR001, USR002..."""
         if not self.userid:
-            # Fetch latest numeric suffix from userId
             last_user = (
                 Users.objects.filter(userid__startswith='USR')
                 .annotate(num_part=Cast(Substr('userid', 4), IntegerField()))
@@ -76,8 +84,6 @@ class Users(models.Model):
             last_number = int(last_user.userid[3:]) if last_user else 0
             new_number = last_number + 1
             self.userid = f"USR{new_number:03d}"
-
-        # Ensure password is hashed before saving
         if self.password and not self.password.startswith('pbkdf2_'):
             self.password = make_password(self.password)
 
