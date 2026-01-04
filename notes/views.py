@@ -1,14 +1,15 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes # Import permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .models import Note
 from .serializers import NoteSerializer
-# Hum Blogs app wale utils use kar lenge code reuse karne ke liye
 from blogs.utils.aws import generate_presigned_url, generate_presigned_download_url
 import uuid
 
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
 @api_view(["POST"])
+@permission_classes([AllowAny]) # Makes this view public
 def create_note_presigned(request):
     try:
         title = request.data.get("title")
@@ -45,10 +46,10 @@ def create_note_presigned(request):
         })
 
     except Exception as e:
-        print(f"Error: {e}")
         return Response({"error": str(e)}, status=500)
 
 @api_view(["GET"])
+@permission_classes([AllowAny]) # Makes this view public
 def get_note_pdf_presigned(request, note_id):
     try:
         note = Note.objects.get(id=note_id)
@@ -63,9 +64,9 @@ def get_note_pdf_presigned(request, note_id):
         return Response({"error": "Note not found"}, status=404)
 
 @api_view(["GET"])
+@permission_classes([AllowAny]) # Makes this view public
 def list_notes(request):
     notes = Note.objects.all().order_by("-uploaded_at")
-    
     subject = request.GET.get('subject')
     category = request.GET.get('category')
 
@@ -76,13 +77,12 @@ def list_notes(request):
 
     serializer = NoteSerializer(notes, many=True)
     return Response(serializer.data)
-# notes/views.py
 
 @api_view(["GET"])
+@permission_classes([AllowAny]) # Makes this view public
 def get_subjects(request):
     """
-    Database se saare unique subjects layega taaki Dropdown me dikha sake.
+    fetching unique subjects for showing on page
     """
-    # values_list flat=True se sirf names ki list aayegi: ['Python', 'Java', 'React']
     subjects = Note.objects.values_list('subject', flat=True).distinct().order_by('subject')
     return Response(list(subjects))

@@ -3,12 +3,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
 from .serializers import AssignUserToBatchSerializer, BatchCreateSerializer
-
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
+from rest_framework.response import Response
 class BatchCreateView(APIView):
     def post(self, request):
         serializer = BatchCreateSerializer(data=request.data)
         if serializer.is_valid():
-            # 1. Data nikalo (Serializer validate kar chuka hai)
+            
             batch_name = serializer.validated_data['batchName']
             course_id = serializer.validated_data['courseId']
             start_date = serializer.validated_data['start_date']
@@ -17,8 +19,6 @@ class BatchCreateView(APIView):
 
             try:
                 with connection.cursor() as cursor:
-                    # 2. ✅ FIXED: Ab hum 5 parameters bhej rahe hain
-                    # SQL Procedure ke naye parameters ke hisaab se
                     cursor.execute("""
                         EXEC sp_create_batch_from_course
                             @batchName = %s,
@@ -60,6 +60,7 @@ class BatchCreateView(APIView):
 # --- Baaki Views Same Rahenge ---
 
 class BatchesByCourseView(APIView):
+    permission_classes = [AllowAny]
     def get(self, request, course_id):
         try:
             with connection.cursor() as cursor:

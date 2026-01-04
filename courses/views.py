@@ -4,7 +4,9 @@ from rest_framework import status
 from django.db import connection
 from .models import Courses, Subjects, SystemSetups
 from .serializers import CourseCreateSerializer, CourseSerializer, CourseUpdateSerializer, SubjectSerializer, SystemSetupSerializer
-
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
+from rest_framework.response import Response
 class CourseCreateView(APIView):
     def post(self, request):
         serializer = CourseCreateSerializer(data=request.data)
@@ -52,6 +54,7 @@ class CourseCreateView(APIView):
 
 
 class CourseListView(APIView):
+    permission_classes = [AllowAny]
     def get(self, request):
         courses = Courses.objects.select_related('contentid').all()
         serializer = CourseSerializer(courses, many=True)
