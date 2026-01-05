@@ -3,9 +3,12 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import CourseInquiry
 from .serializers import CourseInquirySerializer
-
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
+from rest_framework.response import Response
 # 1. Inquiry submit 
 class InquiryCreateView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
         # User manually form fill karega
         print("Data received:", request.data) 
