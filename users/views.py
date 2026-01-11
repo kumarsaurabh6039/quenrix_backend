@@ -13,17 +13,24 @@ from rest_framework import generics
 
 # === IMPORTS ===
 from rest_framework_simplejwt.tokens import RefreshToken
-# ✅ AllowAny import karna zaroori hai public APIs ke liye
 from rest_framework.permissions import IsAuthenticated, AllowAny 
 
 class RegisterUserView(APIView):
-    # ✅ Public Access (Koi bhi register kar sake)
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UsersSerializer(data=request.data)
         if serializer.is_valid():
             data = serializer.validated_data
+            
+            # ✅ Check if user already exists (Case Insensitive)
+            if Users.objects.filter(username__iexact=data['username']).exists():
+                # FIX: Use 409 Conflict and 'detail' key so frontend catches it correctly
+                return Response(
+                    {'detail': 'User is already registered.'}, 
+                    status=status.HTTP_409_CONFLICT
+                )
+
             raw_password = request.data['password']
             hashed_password = make_password(raw_password)
             userId = data.get('userid') or self.generate_user_id()
@@ -37,28 +44,7 @@ class RegisterUserView(APIView):
                     result = cursor.fetchall()
 
                 # Send welcome email
-                subject = 'Welcome to the LMS Platform'
-                message = f"""
-Hi {data['username']},
-
-Your account has been successfully created.
-
-Username: {data['username']}
-Password: {raw_password}
-Role: {role_name}
-
-Please keep this information secure.
-
-Regards,
-LMS Team
-"""
-                send_mail(
-                    subject,
-                    message,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [data['username']],
-                    fail_silently=False
-                )
+                self.send_welcome_email(data['username'], raw_password, role_name)
 
                 return Response({
                     'message': 'User registered successfully',
@@ -70,9 +56,22 @@ LMS Team
                 }, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                # FIX: Use 'detail' key for generic exceptions too
+                return Response({'detail': f'Registration failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # ✅ Clean Error Message for Validation Errors
+        # Instead of returning the full dict, return the first error message directly
+        first_error = "Invalid data provided."
+        if serializer.errors:
+            # Extract the first error from the dictionary
+            field, errors = next(iter(serializer.errors.items()))
+            if errors and isinstance(errors, list):
+                first_error = errors[0]
+            else:
+                first_error = str(errors)
+        
+        # FIX: Use 'detail' key so frontend displays this message instead of "Invalid data sent"
+        return Response({'detail': first_error}, status=status.HTTP_400_BAD_REQUEST)
 
     def generate_user_id(self):
         last_user = (
@@ -88,16 +87,43 @@ LMS Team
             new_number = 1
         return f"USR{new_number:03d}"
 
+    def send_welcome_email(self, username, raw_password, role_name):
+        subject = 'Welcome to the LMS Platform'
+        message = f"""
+Hi {username},
+
+Your account has been successfully created.
+
+Username: {username}
+Password: {raw_password}
+Role: {role_name}
+
+Please keep this information secure.
+
+Regards,
+LMS Team
+"""
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [username],
+                fail_silently=False
+            )
+        except Exception:
+            # Don't break registration if email fails
+            pass
+
 
 class UpdatePasswordView(APIView):
-    # Password update ke liye login hona zaroori hai
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         userId = request.data.get('userId')
         raw_password = request.data.get('newPassword')
         if not userId or not raw_password:
-            return Response({'error': 'userId and newPassword are required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'User ID and new password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         hashed_password = make_password(raw_password)
 
@@ -118,7 +144,7 @@ class SoftDeleteUserView(APIView):
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:
-            return Response({'error': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'User ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             with connection.cursor() as cursor:
@@ -134,7 +160,7 @@ class HardDeleteUserView(APIView):
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:
-            return Response({'error': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'User ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             with connection.cursor() as cursor:
@@ -198,7 +224,6 @@ class ListAllUsersView(generics.ListAPIView):
     """
     API view to list all users.
     """
-    # ✅ Protected View (Sirf Logged in users ke liye)
     permission_classes = [IsAuthenticated]
     
     serializer_class = UsersSerializer
@@ -214,7 +239,7 @@ class ReactivateUserView(APIView):
     def post(self, request):
         userId = request.data.get('userId')
         if not userId:
-            return Response({'error': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'User ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             with connection.cursor() as cursor:
@@ -224,6 +249,7 @@ class ReactivateUserView(APIView):
                 {'message': f'User {userId} reactivated successfully'},
                 status=status.HTTP_200_OK
             )
+            
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

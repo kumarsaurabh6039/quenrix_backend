@@ -13,11 +13,27 @@ class UsersSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     roleid = serializers.PrimaryKeyRelatedField(queryset=Roles.objects.all())
     role = RolesSerializer(read_only=True)
-    userid = serializers.CharField(read_only=True)  # ✅ Prevents validation error
+    userid = serializers.CharField(read_only=True)
 
     class Meta:
         model = Users
         fields = ['userid', 'username', 'password', 'roleid', 'role', 'is_active']
+
+    #  NEW: Custom Validation for Gmail 
+    def validate_username(self, value):
+        """
+        Check that the email is a valid Gmail address.
+        """
+        email = value.lower()
+        if not email.endswith('@gmail.com'):
+            raise serializers.ValidationError("Only @gmail.com email addresses are allowed.")
+        
+        # Optional: Backend check for 'numeric only' username if you want strictly enforcing it
+        local_part = email.split('@')[0]
+        if local_part.isdigit():
+             raise serializers.ValidationError("Username part cannot be purely numeric.")
+
+        return value
 
     def create(self, validated_data):
         """Hash password before saving new user"""
