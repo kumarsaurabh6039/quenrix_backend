@@ -62,7 +62,7 @@ def submit_application(request):
             linkedin_url=data.get("linkedin"),
             portfolio_url=data.get("portfolio"),
             
-            resume_url=s3_file_url # Saving the S3 path
+            resume_url=s3_file_url 
         )
 
        

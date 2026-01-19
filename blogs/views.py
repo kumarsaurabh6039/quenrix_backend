@@ -5,10 +5,14 @@ from blogs.serializers import BlogSerializer
 from .models import Blog
 from .utils.aws import generate_presigned_url, get_s3_client
 from .utils.aws import generate_presigned_url, get_s3_client
-
+# import for giving access to all by saurabh
+from rest_framework.decorators import api_view, permission_classes # Import permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def create_blog_presigned(request):
     title = request.data.get("title")
     description = request.data.get("description")
@@ -47,6 +51,7 @@ from .utils.aws import generate_presigned_download_url
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_blog_pdf_presigned(request, blog_id):
     try:
         blog = Blog.objects.get(id=blog_id)
@@ -64,6 +69,7 @@ def get_blog_pdf_presigned(request, blog_id):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def list_blogs(request):
     blogs = Blog.objects.all().order_by("-uploaded_at")
     serializer = BlogSerializer(blogs, many=True)
@@ -71,6 +77,7 @@ def list_blogs(request):
 
 
 @api_view(["DELETE"])
+@permission_classes([AllowAny])
 def delete_blog(request, blog_id):
     try:
         blog = Blog.objects.get(id=blog_id)
