@@ -4,8 +4,7 @@ from rest_framework import status
 from django.db import connection
 from .serializers import AssignUserToBatchSerializer, BatchCreateSerializer
 from rest_framework.permissions import AllowAny
-from rest_framework.views import APIView
-from rest_framework.response import Response
+
 class BatchCreateView(APIView):
     def post(self, request):
         serializer = BatchCreateSerializer(data=request.data)
@@ -57,8 +56,6 @@ class BatchCreateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# --- Baaki Views Same Rahenge ---
-
 class BatchesByCourseView(APIView):
     permission_classes = [AllowAny]
     def get(self, request, course_id):
@@ -90,6 +87,15 @@ class AssignUserToBatchView(APIView):
             try:
                 with connection.cursor() as cursor:
                     table = 'trainer_batches' if role == 'trainer' else 'student_batches'
+                    
+                    # --- CHECK FOR DUPLICATES ---
+                    cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE batchId = %s AND userId = %s", [batch_id, user_id])
+                    if cursor.fetchone()[0] > 0:
+                        return Response(
+                            {'detail': f'User is already assigned as a {role} in this batch.'}, 
+                            status=status.HTTP_409_CONFLICT
+                        )
+
                     cursor.execute(f"INSERT INTO {table} (batchId, userId) VALUES (%s, %s)", [batch_id, user_id])
                 return Response({'detail': f'{role.capitalize()} assigned.'}, status=status.HTTP_200_OK)
             except Exception as e:
