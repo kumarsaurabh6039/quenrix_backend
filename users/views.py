@@ -14,6 +14,7 @@ from rest_framework import generics
 # === IMPORTS ===
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated, AllowAny 
+from django.utils.crypto import get_random_string # ✅ Added for generating temp password
 
 class RegisterUserView(APIView):
     permission_classes = [AllowAny]
@@ -25,7 +26,6 @@ class RegisterUserView(APIView):
             
             # ✅ Check if user already exists (Case Insensitive)
             if Users.objects.filter(username__iexact=data['username']).exists():
-                # FIX: Use 409 Conflict and 'detail' key so frontend catches it correctly
                 return Response(
                     {'detail': 'User is already registered.'}, 
                     status=status.HTTP_409_CONFLICT
@@ -56,21 +56,17 @@ class RegisterUserView(APIView):
                 }, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                # FIX: Use 'detail' key for generic exceptions too
                 return Response({'detail': f'Registration failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
         # ✅ Clean Error Message for Validation Errors
-        # Instead of returning the full dict, return the first error message directly
         first_error = "Invalid data provided."
         if serializer.errors:
-            # Extract the first error from the dictionary
             field, errors = next(iter(serializer.errors.items()))
             if errors and isinstance(errors, list):
                 first_error = errors[0]
             else:
                 first_error = str(errors)
         
-        # FIX: Use 'detail' key so frontend displays this message instead of "Invalid data sent"
         return Response({'detail': first_error}, status=status.HTTP_400_BAD_REQUEST)
 
     def generate_user_id(self):
@@ -88,11 +84,11 @@ class RegisterUserView(APIView):
         return f"USR{new_number:03d}"
 
     def send_welcome_email(self, username, raw_password, role_name):
-        subject = 'Welcome to the LMS Platform'
+        subject = 'Welcome to Quenrix Platform'
         message = f"""
 Hi {username},
 
-Your account has been successfully created.
+Your account has been successfully created on Quenrix.
 
 Username: {username}
 Password: {raw_password}
@@ -101,7 +97,7 @@ Role: {role_name}
 Please keep this information secure.
 
 Regards,
-LMS Team
+Quenrix Team
 """
         try:
             send_mail(
@@ -112,7 +108,6 @@ LMS Team
                 fail_silently=False
             )
         except Exception:
-            # Don't break registration if email fails
             pass
 
 
@@ -179,7 +174,6 @@ class LoginUserView(APIView):
         username = request.data.get('username')
         password = request.data.get('password')
 
-        # Validation
         if not username or not password:
             return Response(
                 {'error': 'Both username and password are required.'},
@@ -194,14 +188,12 @@ class LoginUserView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Check if user is active
         if not user.is_active:
             return Response(
                 {'error': 'Account is deactivated. Please contact admin.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Verify password
         if not check_password(password, user.password):
             return Response(
                 {'error': 'Invalid username or password.'},
@@ -225,7 +217,6 @@ class ListAllUsersView(generics.ListAPIView):
     API view to list all users.
     """
     permission_classes = [IsAuthenticated]
-    
     serializer_class = UsersSerializer
 
     def get_queryset(self):
@@ -249,7 +240,78 @@ class ReactivateUserView(APIView):
                 {'message': f'User {userId} reactivated successfully'},
                 status=status.HTTP_200_OK
             )
-            
-
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+# ==========================================
+#  ✅ NEW: Forgot Password View Implementation
+# ==========================================
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """
+        1. Takes 'username' (email).
+        2. Checks if user exists.
+        3. Generates temporary password.
+        4. Updates password via Stored Procedure or ORM.
+        5. Sends email.
+        """
+        email = request.data.get('username')
+
+        if not email:
+            return Response({'error': 'Please provide your registered email address.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 1. Check if User Exists
+            user = Users.objects.get(username=email)
+            
+            # 2. Generate Temporary Password (8 chars)
+            temp_password = get_random_string(length=8)
+            hashed_password = make_password(temp_password)
+            
+            # 3. Update Password in Database
+            # We use the same Stored Procedure logic as UpdatePasswordView for consistency
+            # If SP fails or isn't preferred, fallback to: user.password = hashed_password; user.save()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        EXEC sp_update_user_password @userId=%s, @newPassword=%s
+                    """, [user.userid, hashed_password])
+            except Exception as db_error:
+                # Fallback to ORM if SP fails or doesn't exist for this context
+                # print(f"SP Failed, using ORM: {db_error}")
+                user.password = hashed_password
+                user.save()
+
+            # 4. Send Email Notification
+            subject = 'Quenrix - Password Reset Request'
+            message = f"""
+Hello {user.username},
+
+We received a request to reset your password for your Quenrix account.
+
+Your new temporary password is: {temp_password}
+
+Please login using this password and change it immediately from your dashboard for security.
+
+If you did not request this, please contact support immediately.
+
+Regards,
+Team Quenrix
+            """
+            
+            # Ensure EMAIL_HOST_USER is set in settings.py
+            email_from = settings.DEFAULT_FROM_EMAIL
+            recipient_list = [email]
+
+            send_mail(subject, message, email_from, recipient_list, fail_silently=False)
+
+            return Response({'message': 'A temporary password has been sent to your registered Gmail address.'}, status=status.HTTP_200_OK)
+
+        except Users.DoesNotExist:
+            # Security: It's often better not to reveal if a user exists, but for UX we might say "User not found"
+            return Response({'error': 'No account found with this email address.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        except Exception as e:
+            return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
