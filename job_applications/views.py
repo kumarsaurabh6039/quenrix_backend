@@ -7,12 +7,20 @@ from blogs.utils.aws import generate_presigned_url
 from django.core.mail import send_mail
 from django.conf import settings
 import uuid
-
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 BUCKET = "amzn-hyd-myapp-lms-bucket01"
 
 # --- EXISTING SUBMIT VIEW ---
-@api_view(["POST"])
-@permission_classes([AllowAny])          
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@authentication_classes([])        
 def submit_application(request):
     try:
         data = request.data
