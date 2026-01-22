@@ -112,7 +112,7 @@ HR Team, Quenrix
 
 # --- NEW: List All Applicants View ---
 @api_view(["GET"])
-@permission_classes([AllowAny]) # In production, change to [IsAdminUser] or [IsAuthenticated]
+@permission_classes([AllowAny]) 
 def list_applications(request):
     try:
         # Fetch all applications, ordered by latest first
