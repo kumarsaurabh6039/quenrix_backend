@@ -65,4 +65,6 @@ urlpatterns = [
     path('api/job-applications/', include('job_applications.urls')),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'), # Login Endpoint
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # Refresh Token Endpoint
+
+    path("api/zoom/", include("zoom.urls")),
 ]
