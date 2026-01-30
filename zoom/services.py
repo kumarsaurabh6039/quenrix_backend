@@ -7,12 +7,6 @@ import environ
 import os
 from csmitbackend.settings import BASE_DIR
 
-env = environ.Env()
-environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
-
-ZOOM_CLIENT_ID = env("ZOOM_CLIENT_ID")
-ZOOM_CLIENT_SECRET = env("ZOOM_CLIENT_SECRET")
-ZOOM_ACCOUNT_ID = env("ZOOM_ACCOUNT_ID")
 
 
 def get_zoom_access_token():

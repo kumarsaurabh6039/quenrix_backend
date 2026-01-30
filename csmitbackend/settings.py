@@ -137,6 +137,11 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
+
+ZOOM_CLIENT_ID = env("ZOOM_CLIENT_ID")
+ZOOM_CLIENT_SECRET = env("ZOOM_CLIENT_SECRET")
+ZOOM_ACCOUNT_ID = env("ZOOM_ACCOUNT_ID")
+
 import mssql.base
 mssql.base.DatabaseWrapper._sql_server_versions['v17'] = 2022
 if 'v16' in mssql.base.DatabaseWrapper.data_types_suffix:
