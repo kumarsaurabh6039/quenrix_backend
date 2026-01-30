@@ -2,11 +2,6 @@ import requests
 import base64
 from django.conf import settings
 from django.core.cache import cache
-from django.views.decorators.csrf import csrf_exempt
-import environ
-import os
-from csmitbackend.settings import BASE_DIR
-
 
 def get_zoom_access_token():
     token = cache.get("zoom_access_token")
@@ -31,6 +26,25 @@ def get_zoom_access_token():
 
     cache.set("zoom_access_token", token, timeout=3500)
     return token
+
+
+def create_recurring_meeting(topic):
+    token = get_zoom_access_token()
+
+    url = "https://api.zoom.us/v2/users/me/meetings"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    payload = {
+        "topic": topic,
+        "type": 3,
+        "settings": {
+            "join_before_host": True,
+            "approval_type": 2
+        }
+    }
+
+    res = requests.post(url, json=payload, headers=headers)
+    return res.json()
 
 
 def create_meeting(topic, start_time):

@@ -2,8 +2,60 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import connection
+
+from zoom.services import create_recurring_meeting
 from .serializers import AssignUserToBatchSerializer, BatchCreateSerializer
 from rest_framework.permissions import AllowAny
+
+# class BatchCreateView(APIView):
+#     def post(self, request):
+#         serializer = BatchCreateSerializer(data=request.data)
+#         if serializer.is_valid():
+            
+#             batch_name = serializer.validated_data['batchName']
+#             course_id = serializer.validated_data['courseId']
+#             start_date = serializer.validated_data['start_date']
+#             timing = serializer.validated_data['timing']
+#             mode = serializer.validated_data['mode']
+
+#             try:
+#                 with connection.cursor() as cursor:
+#                     cursor.execute("""
+#                         EXEC sp_create_batch_from_course
+#                             @batchName = %s,
+#                             @courseId = %s,
+#                             @startDate = %s,
+#                             @timing = %s,
+#                             @mode = %s
+#                     """, [batch_name, course_id, start_date, timing, mode])
+
+#                     # 3. Batch ID Fetch karo
+#                     new_batch_id = None
+#                     if cursor.description:
+#                         row = cursor.fetchone()
+#                         if row:
+#                             # Usually first column is ID
+#                             new_batch_id = row[0] 
+
+#                     # 4. Success Response
+#                     result = {
+#                         "batchId": new_batch_id,
+#                         "batchName": batch_name,
+#                         "courseId": course_id,
+#                         "startDate": start_date,
+#                         "timing": timing,
+#                         "mode": mode,
+#                         "message": "Batch created successfully."
+#                     }
+
+#                 return Response(result, status=status.HTTP_201_CREATED)
+
+#             except Exception as e:
+#                 # Agar SQL se error aaye toh yahan dikhega
+#                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Validation Error
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class BatchCreateView(APIView):
     def post(self, request):
@@ -17,42 +69,49 @@ class BatchCreateView(APIView):
             mode = serializer.validated_data['mode']
 
             try:
+                # -------- STEP 1: Create Zoom meeting --------
+                zoom = create_recurring_meeting(batch_name)
+
+                if "id" not in zoom:
+                    return Response(
+                        {"detail": "Zoom meeting creation failed"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                zoom_id = zoom["id"]
+                zoom_url = zoom["join_url"]
+
+                # -------- STEP 2: Call stored procedure --------
                 with connection.cursor() as cursor:
                     cursor.execute("""
                         EXEC sp_create_batch_from_course
                             @batchName = %s,
                             @courseId = %s,
-                            @startDate = %s,
-                            @timing = %s,
-                            @mode = %s
-                    """, [batch_name, course_id, start_date, timing, mode])
+                            @zoomMeetingId = %s,
+                            @zoomJoinUrl = %s
+                    """, [batch_name, course_id, zoom_id, zoom_url])
 
-                    # 3. Batch ID Fetch karo
                     new_batch_id = None
                     if cursor.description:
                         row = cursor.fetchone()
                         if row:
-                            # Usually first column is ID
-                            new_batch_id = row[0] 
+                            new_batch_id = row[0]
 
-                    # 4. Success Response
-                    result = {
-                        "batchId": new_batch_id,
-                        "batchName": batch_name,
-                        "courseId": course_id,
-                        "startDate": start_date,
-                        "timing": timing,
-                        "mode": mode,
-                        "message": "Batch created successfully."
-                    }
+                # -------- STEP 3: Response --------
+                result = {
+                    "batchId": new_batch_id,
+                    "batchName": batch_name,
+                    "courseId": course_id,
+                    "zoomMeetingId": zoom_id,
+                    "zoomLink": zoom_url,
+                    "message": "Batch created successfully."
+                }
 
                 return Response(result, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                # Agar SQL se error aaye toh yahan dikhega
                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validation Error
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
