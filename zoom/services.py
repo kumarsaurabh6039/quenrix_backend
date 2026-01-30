@@ -8,7 +8,6 @@ import os
 from csmitbackend.settings import BASE_DIR
 
 
-
 def get_zoom_access_token():
     token = cache.get("zoom_access_token")
     if token:

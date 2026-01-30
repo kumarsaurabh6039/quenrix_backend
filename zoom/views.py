@@ -3,6 +3,7 @@ from .services import create_meeting
 from .models import ZoomMeeting
 import json
 from django.views.decorators.csrf import csrf_exempt
+from .services import get_recordings
 
 @csrf_exempt
 def create_zoom_meeting(request):
@@ -26,9 +27,6 @@ def create_zoom_meeting(request):
         "join_url": meeting.join_url
     })
 
-
-
-from .services import get_recordings
 
 @csrf_exempt
 def list_recordings(request):
