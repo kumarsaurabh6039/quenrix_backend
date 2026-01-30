@@ -6,6 +6,16 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Initialize environment variables
+env = environ.Env()
+# Reading .env file
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
+# Initialize environment variables
+env = environ.Env()
+# Reading .env file
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-9qc9&1=t1oloyr_d73n+xqk1ngtzv(th*!6isth)kj_9x&8!#f'
 
@@ -27,6 +37,9 @@ INSTALLED_APPS = [
     'corsheaders',  
     'users', 'resume', 'practice', 'jobs', 'exams', 'doubts',
     'courses', 'batches', 'drf_yasg', 'announcements', 'inquiries',
+    'success_stories', 'blogs', 'notes', 'careers','job_applications',
+    'executor',
+    'executor',
     'success_stories', 'blogs', 'notes', 'careers','job_applications', 'zoom',
 ]
 
@@ -61,8 +74,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'csmitbackend.wsgi.application'
 
-# Database Configuration
-# Database Configuration
+# Database Configuration (MS SQL Server)
+# Database Configuration (MS SQL Server)
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
@@ -70,14 +83,7 @@ DATABASES = {
         'HOST': 'localhost',
         'USER': '',  
         'PASSWORD': '', 
-        'NAME': 'examDb',
-        'HOST': 'localhost',
-        'USER': '',  
-        'PASSWORD': '', 
         'OPTIONS': {
-            'driver': 'ODBC Driver 18 for SQL Server',
-            'trusted_connection': 'yes',
-            'extra_params': 'TrustServerCertificate=yes;', 
             'driver': 'ODBC Driver 18 for SQL Server',
             'trusted_connection': 'yes',
             'extra_params': 'TrustServerCertificate=yes;', 
@@ -91,10 +97,6 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 # Internationalization
@@ -103,7 +105,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static and Media files
 # Static and Media files
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
@@ -117,9 +118,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200"
 ]
-# =================================================================
 
-# Email Settings
 # Email Settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
@@ -127,9 +126,26 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "quenrix46@gmail.com"
 EMAIL_HOST_PASSWORD = "ujvhooagipoepnsf" 
-EMAIL_HOST_PASSWORD = "ujvhooagipoepnsf" 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+# AWS Settings (Reads from .env)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+
+# AI Settings (Reads from .env - Fixes AttributeError)
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# SQL Server Compatibility Fixes
+# AWS Settings (Reads from .env)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+
+# AI Settings (Reads from .env - Fixes AttributeError)
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# SQL Server Compatibility Fixes
 # AWS Settings
 # AWS Settings
 env = environ.Env()
@@ -154,8 +170,8 @@ def fake_version(self):
 
 mssql.base.DatabaseWrapper.sql_server_version = property(fake_version)
 
-# settings.py
-
+# REST Framework Settings
+# REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'users.authentication.CustomJWTAuthentication',
@@ -165,14 +181,13 @@ REST_FRAMEWORK = {
     ),
 }
 
-from datetime import timedelta
-
+# JWT Settings
+# JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), 
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
-    
     'AUTH_HEADER_TYPES': ('Bearer',),
 }

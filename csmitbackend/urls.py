@@ -58,13 +58,11 @@ urlpatterns = [
     # new added by saurabh
     path('api/', include('inquiries.urls')),
     path('api/', include('success_stories.urls')),
-
+    path('api/', include('executor.urls')),
     path("api/blog/", include("blogs.urls")),
     path('api/notes/', include('notes.urls')),
     path('api/careers/', include('careers.urls')),
     path('api/job-applications/', include('job_applications.urls')),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'), # Login Endpoint
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # Refresh Token Endpoint
-
-    path("api/zoom/", include("zoom.urls")),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), 
 ]
