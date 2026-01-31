@@ -39,8 +39,6 @@ INSTALLED_APPS = [
     'courses', 'batches', 'drf_yasg', 'announcements', 'inquiries',
     'success_stories', 'blogs', 'notes', 'careers','job_applications',
     'executor',
-    'executor',
-    'success_stories', 'blogs', 'notes', 'careers','job_applications', 'zoom',
 ]
 
 MIDDLEWARE = [

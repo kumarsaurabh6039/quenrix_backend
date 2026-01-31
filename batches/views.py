@@ -87,10 +87,20 @@ class BatchCreateView(APIView):
                         EXEC sp_create_batch_from_course
                             @batchName = %s,
                             @courseId = %s,
+                            @startDate = %s,
+                            @timing = %s,
+                            @mode = %s,
                             @zoomMeetingId = %s,
                             @zoomJoinUrl = %s
-                    """, [batch_name, course_id, zoom_id, zoom_url])
-
+                    """, [
+                        batch_name,
+                        course_id,
+                        start_date,
+                        timing,
+                        mode,
+                        zoom_id,
+                        zoom_url
+                    ])
                     new_batch_id = None
                     if cursor.description:
                         row = cursor.fetchone()
