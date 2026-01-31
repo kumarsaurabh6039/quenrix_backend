@@ -131,7 +131,7 @@ class BatchesByCourseView(APIView):
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT batchId, batchName, is_active, startDate, timing, mode
+                    SELECT batchId, batchName, is_active, startDate, timing, mode, zoom_meeting_id, zoom_join_url
                     FROM batches
                     WHERE courseId = %s
                 """, [course_id])
