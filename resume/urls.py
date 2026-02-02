@@ -1,7 +1,7 @@
 # resume/urls.py
 from django.urls import path
 
-from . import views  # <-- make sure this line is EXACTLY like this
+from . import views  
 from .views import AddProficiencyView, AddSkillView, AddTechStackView, CreateOrUpdateResumeView, GetResumeView, ResumeSetupDataView, CreateOrUpdateResumeView
 
 urlpatterns = [
