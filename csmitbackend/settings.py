@@ -74,21 +74,21 @@ WSGI_APPLICATION = 'csmitbackend.wsgi.application'
 
 # Database Configuration (MS SQL Server)
 # Database Configuration (MS SQL Server)
+# settings.py mein DATABASES section ko aise badlein:
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'examDb',
-        'HOST': 'localhost',
-        'USER': '',  
-        'PASSWORD': '', 
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
+        'PASSWORD': env('DB_PASSWORD'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT', default='1433'),
         'OPTIONS': {
-            'driver': 'ODBC Driver 18 for SQL Server',
-            'trusted_connection': 'yes',
+            'driver': 'ODBC Driver 18 for SQL Server', # Humne EC2 par 18 install kiya hai
             'extra_params': 'TrustServerCertificate=yes;', 
         },
     }
 }
-
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
