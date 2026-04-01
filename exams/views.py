@@ -41,7 +41,6 @@ def evaluate_mcq_orm(attempt_id):
     for answer in mcq_answers:
         is_correct = False
         try:
-            # Check if student's selection matches the correct option (iscorrect=True)
             Options.objects.get(
                 optionid=answer.selectedoptionid.optionid, 
                 iscorrect=True 
@@ -109,8 +108,12 @@ def evaluate_with_ai(question_text, student_answer, max_points):
 # =========================================================================================
 
 class ExamListView(generics.ListAPIView):
-    queryset = Exams.objects.all()
     serializer_class = ExamSerializer
+
+    def get_queryset(self):
+        now = timezone.now()
+        # This ensures the 'exam-list/' route ONLY returns upcoming and ongoing active exams
+        return Exams.objects.filter(is_active=True, end_datetime__gte=now).order_by('start_datetime')
 
 class ExamDetailView(generics.RetrieveAPIView):
     queryset = Exams.objects.all()
@@ -232,6 +235,33 @@ class StudentExamListView(generics.ListAPIView):
         return queryset.order_by('start_datetime')
 
 
+# =========================================================
+# NEW API: Fetches ONLY Active (Ongoing + Upcoming) Exams
+# =========================================================
+class ActiveStudentExamListView(generics.ListAPIView):
+    """
+    Fetches exams that are currently active and have NOT ended yet.
+    Completely filters out old/past exams at the database level.
+    """
+    serializer_class = ExamSerializer
+
+    def get_queryset(self):
+        course_id = self.kwargs['course_id']
+        batch_id = self.kwargs['batch_id']
+        now = timezone.now()
+
+        # Added Q(is_active__isnull=True) because new exams might not have is_active set to True explicitly.
+        queryset = Exams.objects.filter(
+            courseid=course_id,
+            batchid=batch_id,
+            end_datetime__gte=now  
+        ).filter(
+            Q(is_active=True) | Q(is_active__isnull=True)
+        )
+
+        return queryset.order_by('start_datetime')
+
+
 class StudentExamAttemptListView(generics.ListAPIView):
     serializer_class = ExamAttemptSerializer
 
@@ -272,35 +302,157 @@ class StudentBatchByUserIdView(generics.ListAPIView):
         ).select_related('batchid') 
 
         return queryset
+
+
 class StudentAnswerDetailListView(APIView):
-    """Retrieves detailed student answers including AI score and feedback for an attempt."""
+    """
+    Returns ALL questions for an attempt with:
+    - MCQ: all options, which student selected, which is correct
+    - Descriptive/Coding: student answer, AI score, AI feedback
+    - Improvement tips per question based on performance
+    """
     def get(self, request, attempt_id):
         try:
-            queryset = StudentAnswers.objects.filter(
-                attemptid=attempt_id,
-                questionid__questiontypeid__in=[2, 3] 
-            ).select_related('questionid')
+            # Get the attempt to find the exam
+            attempt = ExamAttempts.objects.select_related('examid').get(attemptid=attempt_id)
+
+            # Get all questions for this exam, ordered
+            all_questions = Questions.objects.filter(
+                examid=attempt.examid
+            ).select_related('questiontypeid').order_by('questionid')
+
+            # Get all student answers for this attempt, keyed by questionid
+            all_answers = StudentAnswers.objects.filter(
+                attemptid=attempt_id
+            ).select_related('questionid', 'selectedoptionid')
+
+            answered_map = {ans.questionid.questionid: ans for ans in all_answers}
 
             results = []
-            for answer in queryset:
-                if answer.evaluated and (answer.descriptive_answer or answer.code_answer):
-                    results.append({
-                        'questionid': answer.questionid.questionid,
-                        'question_text': answer.questionid.questiontext,
-                        'question_type_id': answer.questionid.questiontypeid_id,
-                        'student_answer': answer.descriptive_answer or answer.code_answer or "No answer submitted.",
-                        'ai_score': float(answer.ai_score) if answer.ai_score else 0.0,
-                        'ai_feedback': answer.ai_feedback or "AI feedback not available.",
-                        'points_earned': float(answer.points_earned) if answer.points_earned else 0.0,
-                        'max_points': answer.questionid.points
-                    })
-            
+
+            for idx, question in enumerate(all_questions):
+                q_id = question.questionid
+                q_type = question.questiontypeid_id  # 1=MCQ, 2=Descriptive, 3=Coding
+                max_pts = question.points or 0
+                answer = answered_map.get(q_id)
+
+                item = {
+                    'questionid': q_id,
+                    'question_number': idx + 1,
+                    'question_text': question.questiontext,
+                    'question_type_id': q_type,
+                    'max_points': max_pts,
+                    'points_earned': 0.0,
+                    'is_correct': False,
+                    'student_answer': None,
+                    'correct_answer': None,
+                    'ai_score': None,
+                    'ai_feedback': None,
+                    'options': [],
+                    'selected_option_id': None,
+                    'correct_option_id': None,
+                    'improvement_tip': None,
+                }
+
+                if q_type == 1:  # MCQ
+                    # Fetch all options for this question
+                    options = list(Options.objects.filter(questionid=question))
+                    correct_opt = next((o for o in options if o.iscorrect), None)
+
+                    item['options'] = [
+                        {
+                            'optionid': opt.optionid,
+                            'optiontext': opt.optiontext,
+                            'iscorrect': bool(opt.iscorrect),
+                        }
+                        for opt in options
+                    ]
+
+                    if correct_opt:
+                        item['correct_answer'] = correct_opt.optiontext
+                        item['correct_option_id'] = correct_opt.optionid
+
+                    if answer and answer.selectedoptionid:
+                        item['selected_option_id'] = answer.selectedoptionid.optionid
+                        item['student_answer'] = answer.selectedoptionid.optiontext
+                        item['is_correct'] = bool(answer.is_correct)
+                        item['points_earned'] = float(answer.points_earned) if answer.points_earned is not None else 0.0
+                    else:
+                        # Not attempted
+                        item['student_answer'] = None
+                        item['is_correct'] = False
+                        item['points_earned'] = 0.0
+
+                    # Improvement tip for MCQ
+                    if not item['is_correct']:
+                        if item['student_answer'] is None:
+                            item['improvement_tip'] = "You skipped this question. Always attempt every question — even an educated guess can earn marks."
+                        else:
+                            item['improvement_tip'] = (
+                                f"You selected an incorrect option. The correct answer was: \"{item['correct_answer']}\". "
+                                "Review this topic and practice similar questions to strengthen your understanding."
+                            )
+                    else:
+                        item['improvement_tip'] = "Great job! You answered this correctly. Keep revising to maintain your accuracy."
+
+                elif q_type in [2, 3]:  # Descriptive or Coding
+                    q_label = "descriptive" if q_type == 2 else "coding"
+
+                    if answer:
+                        raw_answer = answer.descriptive_answer or answer.code_answer or ""
+                        item['student_answer'] = raw_answer if raw_answer.strip() else None
+                        item['ai_score'] = float(answer.ai_score) if answer.ai_score is not None else 0.0
+                        item['ai_feedback'] = answer.ai_feedback or "AI evaluation is pending."
+                        item['points_earned'] = float(answer.points_earned) if answer.points_earned is not None else 0.0
+                        item['is_correct'] = item['points_earned'] > 0
+
+                        # Improvement tip based on score ratio
+                        score_ratio = item['points_earned'] / max_pts if max_pts > 0 else 0
+                        if item['student_answer'] is None:
+                            item['improvement_tip'] = (
+                                f"You did not attempt this {q_label} question. "
+                                "Even a partial answer can earn partial credit. Practice writing structured responses."
+                            )
+                        elif score_ratio == 0:
+                            item['improvement_tip'] = (
+                                f"Your {q_label} answer did not meet the evaluation criteria. "
+                                "Review the key concepts and try to structure your answer clearly next time."
+                            )
+                        elif score_ratio < 0.5:
+                            item['improvement_tip'] = (
+                                f"You earned {item['points_earned']:.1f}/{max_pts} points. "
+                                "Your answer was partially correct. Focus on completeness and depth in your responses."
+                            )
+                        elif score_ratio < 1.0:
+                            item['improvement_tip'] = (
+                                f"Good effort! You scored {item['points_earned']:.1f}/{max_pts}. "
+                                "With a little more detail and precision, you can achieve full marks."
+                            )
+                        else:
+                            item['improvement_tip'] = "Excellent! Full marks on this question. Your answer was comprehensive and accurate."
+                    else:
+                        # No answer submitted at all
+                        item['student_answer'] = None
+                        item['points_earned'] = 0.0
+                        item['is_correct'] = False
+                        item['ai_feedback'] = "No answer was submitted for this question."
+                        item['improvement_tip'] = (
+                            f"You did not submit an answer for this {q_label} question. "
+                            "Always attempt every question for a chance at partial credit."
+                        )
+
+                results.append(item)
+
             return Response(results, status=status.HTTP_200_OK)
 
+        except ExamAttempts.DoesNotExist:
+            return Response({'detail': f'Attempt ID {attempt_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            import traceback
+            print(f"StudentAnswerDetailListView Error: {traceback.format_exc()}")
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
 
+    
 class EvaluateCompleteExamView(APIView):
     def post(self, request, attempt_id):
         try:
@@ -308,21 +460,18 @@ class EvaluateCompleteExamView(APIView):
             evaluate_mcq_orm(attempt_id)
             
             # === Step 2: Evaluate Descriptive & Coding (AI) ===
-            
-            # Filter for non-evaluated answers (False or null) that have text/code content
             answers = StudentAnswers.objects.filter(
                 attemptid=attempt_id
             ).filter(
                 Q(evaluated=False) | Q(evaluated__isnull=True)
             ).filter(
                 Q(descriptive_answer__isnull=False) | Q(code_answer__isnull=False),
-                questionid__questiontypeid__in=[2, 3] # Type 2: Descriptive, 3: Coding
+                questionid__questiontypeid__in=[2, 3]
             ).exclude(
                 descriptive_answer=''
             ).exclude(
                 code_answer=''
             ).select_related('questionid', 'questionid__questiontypeid')
-
 
             total_descriptive_score = Decimal(0)
             total_coding_score = Decimal(0)
@@ -359,9 +508,7 @@ class EvaluateCompleteExamView(APIView):
             result_obj.updated_at = timezone.now()
             result_obj.save()
 
-
             # === Step 3: Finalize Result Calculation ===
-            
             total_score_data = StudentAnswers.objects.filter(
                 attemptid=attempt_id
             ).aggregate(
@@ -373,6 +520,8 @@ class EvaluateCompleteExamView(APIView):
             try:
                 final_attempt = ExamAttempts.objects.get(attemptid=attempt_id)
                 final_attempt.total_score = final_score
+                final_attempt.ai_evaluated = True
+                final_attempt.updated_at = timezone.now()
                 final_attempt.save()
             except ExamAttempts.DoesNotExist:
                 return Response({"error": f"Attempt ID {attempt_id} not found during final scoring."}, status=status.HTTP_404_NOT_FOUND)
@@ -388,11 +537,12 @@ class EvaluateCompleteExamView(APIView):
 
             return Response({
                 "attemptid": final_attempt.attemptid,
-                "total_score": final_score, 
+                "total_score": float(final_score),
                 "max_score": max_score_int,
                 "status_message": f"Results processed. Score: {final_score:.2f}/{max_score_int}"
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            print(f"CRITICAL EVALUATION ERROR: {e}")
+            import traceback
+            print(f"CRITICAL EVALUATION ERROR: {traceback.format_exc()}")
             return Response({"error": "Full evaluation process failed.", "detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
