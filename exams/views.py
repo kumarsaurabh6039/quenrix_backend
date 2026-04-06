@@ -222,84 +222,88 @@ class ExamCreateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class StudentExamListView(generics.ListAPIView):
-    serializer_class = ExamSerializer
-
-    def get_queryset(self):
-        course_id = self.kwargs['course_id']
-        batch_id = self.kwargs['batch_id']
-        now = timezone.now()
-        status_filter = self.request.query_params.get('status', 'all')
-        queryset = Exams.objects.filter(courseid=course_id, batchid=batch_id, is_active=True)
-        if status_filter == 'upcoming':
-            queryset = queryset.filter(start_datetime__gt=now)
-        elif status_filter == 'ongoing':
-            queryset = queryset.filter(start_datetime__lte=now, end_datetime__gte=now)
-        elif status_filter == 'past':
-            queryset = queryset.filter(end_datetime__lt=now)
-        return queryset.order_by('start_datetime')
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset().annotate(total_questions=Count('questions'))
-        data = []
-        for exam in queryset:
-            data.append({
-                'examid': exam.examid,
-                'examname': exam.examname,
-                'start_datetime': exam.start_datetime,
-                'end_datetime': exam.end_datetime,
-                'is_active': exam.is_active,
-                'courseid': exam.courseid_id,
-                'batchid': exam.batchid_id,
-                'subjectid': exam.subjectid_id,
-                'batch_name': exam.batchid.batchname if exam.batchid else None,
-                'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
-                'total_questions': exam.total_questions,
-            })
-        return Response(data)
+class StudentExamListView(APIView):
+    def get(self, request, course_id, batch_id):
+        status_filter = request.query_params.get('status', 'all')
+        try:
+            with connection.cursor() as cursor:
+                base_sql = """
+                    SELECT
+                        e.examId        AS examid,
+                        e.examName      AS examname,
+                        e.start_datetime,
+                        e.end_datetime,
+                        e.is_active,
+                        e.courseId      AS courseid,
+                        e.batchId       AS batchid,
+                        e.subjectId     AS subjectid,
+                        b.batchName     AS batch_name,
+                        s.subjectName   AS subject_name,
+                        (SELECT COUNT(*) FROM questions q WHERE q.examId = e.examId) AS total_questions
+                    FROM exams e
+                    LEFT JOIN batches b ON e.batchId = b.batchId
+                    LEFT JOIN subjects s ON e.subjectId = s.subjectId
+                    WHERE e.courseId = %s AND e.batchId = %s AND e.is_active = 1
+                """
+                now = timezone.now()
+                params = [course_id, batch_id]
+                if status_filter == 'upcoming':
+                    base_sql += ' AND e.start_datetime > %s'
+                    params.append(now)
+                elif status_filter == 'ongoing':
+                    base_sql += ' AND e.start_datetime <= %s AND e.end_datetime >= %s'
+                    params.extend([now, now])
+                elif status_filter == 'past':
+                    base_sql += ' AND e.end_datetime < %s'
+                    params.append(now)
+                base_sql += ' ORDER BY e.start_datetime'
+                cursor.execute(base_sql, params)
+                columns = [col[0] for col in cursor.description]
+                data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =========================================================
 # NEW API: Fetches ONLY Active (Ongoing + Upcoming) Exams
 # =========================================================
-class ActiveStudentExamListView(generics.ListAPIView):
+class ActiveStudentExamListView(APIView):
     """
     Fetches exams that are currently active and have NOT ended yet.
     Completely filters out old/past exams at the database level.
     """
-    serializer_class = ExamSerializer
-
-    def get_queryset(self):
-        course_id = self.kwargs['course_id']
-        batch_id = self.kwargs['batch_id']
-        now = timezone.now()
-        queryset = Exams.objects.filter(
-            courseid=course_id,
-            batchid=batch_id,
-            end_datetime__gte=now
-        ).filter(
-            Q(is_active=True) | Q(is_active__isnull=True)
-        )
-        return queryset.order_by('start_datetime')
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset().annotate(total_questions=Count('questions'))
-        data = []
-        for exam in queryset:
-            data.append({
-                'examid': exam.examid,
-                'examname': exam.examname,
-                'start_datetime': exam.start_datetime,
-                'end_datetime': exam.end_datetime,
-                'is_active': exam.is_active,
-                'courseid': exam.courseid_id,
-                'batchid': exam.batchid_id,
-                'subjectid': exam.subjectid_id,
-                'batch_name': exam.batchid.batchname if exam.batchid else None,
-                'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
-                'total_questions': exam.total_questions,
-            })
-        return Response(data)
+    def get(self, request, course_id, batch_id):
+        try:
+            with connection.cursor() as cursor:
+                now = timezone.now()
+                cursor.execute("""
+                    SELECT
+                        e.examId        AS examid,
+                        e.examName      AS examname,
+                        e.start_datetime,
+                        e.end_datetime,
+                        e.is_active,
+                        e.courseId      AS courseid,
+                        e.batchId       AS batchid,
+                        e.subjectId     AS subjectid,
+                        b.batchName     AS batch_name,
+                        s.subjectName   AS subject_name,
+                        (SELECT COUNT(*) FROM questions q WHERE q.examId = e.examId) AS total_questions
+                    FROM exams e
+                    LEFT JOIN batches b ON e.batchId = b.batchId
+                    LEFT JOIN subjects s ON e.subjectId = s.subjectId
+                    WHERE e.courseId = %s
+                      AND e.batchId = %s
+                      AND e.end_datetime >= %s
+                      AND (e.is_active = 1 OR e.is_active IS NULL)
+                    ORDER BY e.start_datetime
+                """, [course_id, batch_id, now])
+                columns = [col[0] for col in cursor.description]
+                data = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StudentExamAttemptListView(generics.ListAPIView):
