@@ -252,7 +252,7 @@ class StudentExamListView(generics.ListAPIView):
                 'courseid': exam.courseid_id,
                 'batchid': exam.batchid_id,
                 'subjectid': exam.subjectid_id,
-                'batch_name': exam.batchid.batchName if exam.batchid else None,
+                'batch_name': exam.batchid.batchname if exam.batchid else None,
                 'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
                 'total_questions': exam.total_questions,
             })
@@ -295,7 +295,7 @@ class ActiveStudentExamListView(generics.ListAPIView):
                 'courseid': exam.courseid_id,
                 'batchid': exam.batchid_id,
                 'subjectid': exam.subjectid_id,
-                'batch_name': exam.batchid.batchName if exam.batchid else None,
+                'batch_name': exam.batchid.batchname if exam.batchid else None,
                 'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
                 'total_questions': exam.total_questions,
             })
