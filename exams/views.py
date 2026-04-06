@@ -2,10 +2,10 @@ import json
 import os
 import re
 from dotenv import load_dotenv
-from decimal import Decimal 
+from decimal import Decimal
 from openai import OpenAI
 from django.db import connection
-from django.db.models import Q, Sum 
+from django.db.models import Q, Sum, Count
 from django.utils import timezone
 
 # --- REST Framework Imports ---
@@ -13,17 +13,18 @@ from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 
 # --- Local Models Imports ---
 from .models import (
-    Exams, Questions, ExamAttempts, StudentAnswers, ExamResults, 
-    StudentBatches, Options, QuestionTypes 
-) 
+    Exams, Questions, ExamAttempts, StudentAnswers, ExamResults,
+    StudentBatches, Options, QuestionTypes
+)
 
 # --- Serializers ---
 from .serializers import (
-    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer, 
-    ExamAttemptSerializer, StudentAnswerSerializer, StudentBatchSerializer 
+    ExamCreateSerializer, ExamResultDetailSerializer, ExamSerializer, QuestionSerializer,
+    ExamAttemptSerializer, StudentAnswerSerializer, StudentBatchSerializer
 )
 
 # --- Configuration ---
@@ -35,15 +36,15 @@ def evaluate_mcq_orm(attempt_id):
     """Evaluates MCQ answers and updates StudentAnswers records."""
     mcq_answers = StudentAnswers.objects.filter(
         attemptid=attempt_id,
-        selectedoptionid__isnull=False 
+        selectedoptionid__isnull=False
     ).select_related('questionid', 'selectedoptionid')
 
     for answer in mcq_answers:
         is_correct = False
         try:
             Options.objects.get(
-                optionid=answer.selectedoptionid.optionid, 
-                iscorrect=True 
+                optionid=answer.selectedoptionid.optionid,
+                iscorrect=True
             )
             is_correct = True
         except Options.DoesNotExist:
@@ -51,25 +52,26 @@ def evaluate_mcq_orm(attempt_id):
 
         question_points = Decimal(answer.questionid.points or 0)
         points_earned = question_points if is_correct else Decimal(0)
-        
+
         answer.is_correct = is_correct
         answer.points_earned = points_earned
-        answer.evaluated = True 
+        answer.evaluated = True
         answer.updated_at = timezone.now()
         answer.save()
-        
+
     # Mark unanswered MCQs as evaluated with 0 points
     StudentAnswers.objects.filter(
         attemptid=attempt_id,
-        selectedoptionid__isnull=True, 
-        questionid__questiontypeid=1 
+        selectedoptionid__isnull=True,
+        questionid__questiontypeid=1
     ).update(points_earned=Decimal(0), evaluated=True)
-    
+
     return True
+
 
 def evaluate_with_ai(question_text, student_answer, max_points):
     """Evaluates descriptive/coding answers using AI."""
-    
+
     if not student_answer or student_answer.strip() == "":
         return 0.0, "No answer provided by the student."
 
@@ -92,7 +94,7 @@ def evaluate_with_ai(question_text, student_answer, max_points):
         )
 
         feedback_text = response.choices[0].message.content
-        match = re.search(r"Score[:\-]?\s*(\d+(\.\d+)?)", feedback_text) 
+        match = re.search(r"Score[:\-]?\s*(\d+(\.\d+)?)", feedback_text)
         score = float(match.group(1)) if match else 0.0
 
     except Exception as e:
@@ -102,6 +104,7 @@ def evaluate_with_ai(question_text, student_answer, max_points):
     score = max(0.0, min(score, max_points))
 
     return score, feedback_text
+
 
 # =========================================================================================
 # === DJANGO VIEWS ===
@@ -115,29 +118,35 @@ class ExamListView(generics.ListAPIView):
         # This ensures the 'exam-list/' route ONLY returns upcoming and ongoing active exams
         return Exams.objects.filter(is_active=True, end_datetime__gte=now).order_by('start_datetime')
 
+
 class ExamDetailView(generics.RetrieveAPIView):
     queryset = Exams.objects.all()
     serializer_class = ExamSerializer
     lookup_field = 'examid'
+
 
 class QuestionListView(generics.ListAPIView):
     serializer_class = QuestionSerializer
 
     def get_queryset(self):
         exam_id = self.kwargs['examid']
-        return Questions.objects.filter(examid=exam_id).select_related('questiontypeid') 
+        return Questions.objects.filter(examid=exam_id).select_related('questiontypeid')
+
 
 class ExamAttemptCreateView(generics.CreateAPIView):
     queryset = ExamAttempts.objects.all()
     serializer_class = ExamAttemptSerializer
 
+
 class StudentAnswerCreateView(generics.CreateAPIView):
     queryset = StudentAnswers.objects.all()
     serializer_class = StudentAnswerSerializer
 
+
 class ExamResultListView(generics.ListAPIView):
     queryset = ExamResults.objects.all()
     serializer_class = ExamResultDetailSerializer
+
 
 class EvaluateMCQAnswersView(APIView):
     def post(self, request, attempt_id):
@@ -158,7 +167,7 @@ class CalculateExamResultView(APIView):
                 total_earned=Sum('points_earned')
             )
             final_score = total_score_data.get('total_earned') or Decimal(0)
-            
+
             final_attempt = ExamAttempts.objects.get(attemptid=attempt_id)
             final_attempt.total_score = final_score
             final_attempt.save()
@@ -172,7 +181,7 @@ class CalculateExamResultView(APIView):
             return Response({"error": f"Attempt ID {attempt_id} not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
+
 
 class ExamCreateView(APIView):
     def post(self, request):
@@ -220,19 +229,34 @@ class StudentExamListView(generics.ListAPIView):
         course_id = self.kwargs['course_id']
         batch_id = self.kwargs['batch_id']
         now = timezone.now()
-
         status_filter = self.request.query_params.get('status', 'all')
-
         queryset = Exams.objects.filter(courseid=course_id, batchid=batch_id, is_active=True)
-
         if status_filter == 'upcoming':
             queryset = queryset.filter(start_datetime__gt=now)
         elif status_filter == 'ongoing':
             queryset = queryset.filter(start_datetime__lte=now, end_datetime__gte=now)
         elif status_filter == 'past':
             queryset = queryset.filter(end_datetime__lt=now)
-
         return queryset.order_by('start_datetime')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset().annotate(total_questions=Count('questions'))
+        data = []
+        for exam in queryset:
+            data.append({
+                'examid': exam.examid,
+                'examname': exam.examname,
+                'start_datetime': exam.start_datetime,
+                'end_datetime': exam.end_datetime,
+                'is_active': exam.is_active,
+                'courseid': exam.courseid_id,
+                'batchid': exam.batchid_id,
+                'subjectid': exam.subjectid_id,
+                'batch_name': exam.batchid.batchName if exam.batchid else None,
+                'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
+                'total_questions': exam.total_questions,
+            })
+        return Response(data)
 
 
 # =========================================================
@@ -249,17 +273,33 @@ class ActiveStudentExamListView(generics.ListAPIView):
         course_id = self.kwargs['course_id']
         batch_id = self.kwargs['batch_id']
         now = timezone.now()
-
-        # Added Q(is_active__isnull=True) because new exams might not have is_active set to True explicitly.
         queryset = Exams.objects.filter(
             courseid=course_id,
             batchid=batch_id,
-            end_datetime__gte=now  
+            end_datetime__gte=now
         ).filter(
             Q(is_active=True) | Q(is_active__isnull=True)
         )
-
         return queryset.order_by('start_datetime')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset().annotate(total_questions=Count('questions'))
+        data = []
+        for exam in queryset:
+            data.append({
+                'examid': exam.examid,
+                'examname': exam.examname,
+                'start_datetime': exam.start_datetime,
+                'end_datetime': exam.end_datetime,
+                'is_active': exam.is_active,
+                'courseid': exam.courseid_id,
+                'batchid': exam.batchid_id,
+                'subjectid': exam.subjectid_id,
+                'batch_name': exam.batchid.batchName if exam.batchid else None,
+                'subject_name': exam.subjectid.subjectname if exam.subjectid else None,
+                'total_questions': exam.total_questions,
+            })
+        return Response(data)
 
 
 class StudentExamAttemptListView(generics.ListAPIView):
@@ -292,14 +332,15 @@ class StudentFinalResultView(generics.ListAPIView):
 
         return queryset.order_by('-updated_at')
 
+
 class StudentBatchByUserIdView(generics.ListAPIView):
     serializer_class = StudentBatchSerializer
 
     def get_queryset(self):
-        user_id = self.kwargs['user_id'] 
+        user_id = self.kwargs['user_id']
         queryset = StudentBatches.objects.filter(
-            userid_id=user_id 
-        ).select_related('batchid') 
+            userid_id=user_id
+        ).select_related('batchid')
 
         return queryset
 
@@ -452,13 +493,13 @@ class StudentAnswerDetailListView(APIView):
             print(f"StudentAnswerDetailListView Error: {traceback.format_exc()}")
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    
+
 class EvaluateCompleteExamView(APIView):
     def post(self, request, attempt_id):
         try:
             # === Step 1: Evaluate MCQs ===
             evaluate_mcq_orm(attempt_id)
-            
+
             # === Step 2: Evaluate Descriptive & Coding (AI) ===
             answers = StudentAnswers.objects.filter(
                 attemptid=attempt_id
@@ -494,13 +535,13 @@ class EvaluateCompleteExamView(APIView):
                 ans.evaluated = True
                 ans.updated_at = timezone.now()
                 ans.save()
-                
+
                 question_type_id = ans.questionid.questiontypeid_id
                 if question_type_id == 2:
                     total_descriptive_score += ai_score_decimal
                 elif question_type_id == 3:
                     total_coding_score += ai_score_decimal
-                
+
             # Update ExamResults with partial scores
             result_obj, _ = ExamResults.objects.get_or_create(attemptid_id=attempt_id)
             result_obj.total_descriptive_score = total_descriptive_score
@@ -515,7 +556,7 @@ class EvaluateCompleteExamView(APIView):
                 total_earned=Sum('points_earned')
             )
             final_score = total_score_data.get('total_earned') or Decimal(0)
-            
+
             # Update ExamAttempts with final score
             try:
                 final_attempt = ExamAttempts.objects.get(attemptid=attempt_id)
@@ -528,7 +569,7 @@ class EvaluateCompleteExamView(APIView):
 
             with connection.cursor() as cursor:
                 cursor.execute("EXEC sp_calculate_exam_results @attemptId = %s", [attempt_id])
-            
+
             # Calculate Max Score
             max_score_qs = Questions.objects.filter(examid=final_attempt.examid_id)
             max_score_data = max_score_qs.aggregate(Sum('points'))
@@ -546,3 +587,86 @@ class EvaluateCompleteExamView(APIView):
             import traceback
             print(f"CRITICAL EVALUATION ERROR: {traceback.format_exc()}")
             return Response({"error": "Full evaluation process failed.", "detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# =========================================================================================
+# ADDED: ForceCompleteExamView
+#
+# Purpose:
+#   When a student closes the browser tab or loses internet mid-exam,
+#   the Angular frontend calls navigator.sendBeacon() in the window:beforeunload event.
+#   sendBeacon() cannot attach Authorization headers, so this endpoint has
+#   permission_classes = [AllowAny] — no token required.
+#
+#   This view evaluates only the MCQ answers that were already saved,
+#   calculates the total score, and marks the attempt as complete.
+#   AI evaluation (descriptive/coding) is intentionally skipped here because
+#   sendBeacon has a very short timeout and OpenAI calls take too long.
+#   AI evaluation will run later if the student reopens and views their result.
+#
+# Called by:
+#   POST /api/exams/force-complete/
+#   Body: { "attemptId": 123 }
+# =========================================================================================
+class ForceCompleteExamView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        attempt_id = request.data.get('attemptId')
+
+        if not attempt_id:
+            return Response(
+                {'error': 'attemptId is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            attempt = ExamAttempts.objects.get(attemptid=attempt_id)
+
+            # If this attempt was already fully evaluated, do nothing.
+            # This prevents double-processing if the student submitted normally
+            # and the beacon also fires (both can happen).
+            if attempt.ai_evaluated:
+                return Response(
+                    {'message': 'Attempt already evaluated. No action taken.'},
+                    status=status.HTTP_200_OK
+                )
+
+            # Evaluate only MCQ answers that are already saved in the database.
+            # Unanswered questions will correctly show 0 points.
+            evaluate_mcq_orm(attempt_id)
+
+            # Sum up all points_earned from saved answers (MCQ only at this stage).
+            total = StudentAnswers.objects.filter(
+                attemptid=attempt_id
+            ).aggregate(
+                total_earned=Sum('points_earned')
+            ).get('total_earned') or Decimal(0)
+
+            # Save the total score to the attempt record.
+            attempt.total_score = total
+            attempt.updated_at = timezone.now()
+            attempt.save()
+
+            # Run the stored procedure to create/update the exam_results record.
+            with connection.cursor() as cursor:
+                cursor.execute("EXEC sp_calculate_exam_results @attemptId = %s", [attempt_id])
+
+            return Response({
+                'message': 'Exam force-completed and MCQ results saved successfully.',
+                'attempt_id': attempt_id,
+                'total_score': float(total)
+            }, status=status.HTTP_200_OK)
+
+        except ExamAttempts.DoesNotExist:
+            return Response(
+                {'error': f'Attempt ID {attempt_id} not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            import traceback
+            print(f"ForceCompleteExamView Error: {traceback.format_exc()}")
+            return Response(
+                {'error': 'Force complete failed.', 'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

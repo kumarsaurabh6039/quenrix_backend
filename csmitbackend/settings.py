@@ -11,11 +11,6 @@ env = environ.Env()
 # Reading .env file
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
-# Initialize environment variables
-env = environ.Env()
-# Reading .env file
-environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-9qc9&1=t1oloyr_d73n+xqk1ngtzv(th*!6isth)kj_9x&8!#f'
 
@@ -34,15 +29,15 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'corsheaders',  
+    'corsheaders',
     'users', 'resume', 'practice', 'jobs', 'exams', 'doubts',
     'courses', 'batches', 'drf_yasg', 'announcements', 'inquiries',
-    'success_stories', 'blogs', 'notes', 'careers','job_applications',
-    'executor','zoom',
+    'success_stories', 'blogs', 'notes', 'careers', 'job_applications',
+    'executor', 'zoom',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -73,18 +68,17 @@ TEMPLATES = [
 WSGI_APPLICATION = 'csmitbackend.wsgi.application'
 
 # Database Configuration (MS SQL Server)
-# Database Configuration (MS SQL Server)
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'examDb',
-        'HOST': 'localhost',
-        'USER': '',  
-        'PASSWORD': '', 
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
+        'PASSWORD': env('DB_PASSWORD'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT', default='1433'),
         'OPTIONS': {
             'driver': 'ODBC Driver 18 for SQL Server',
-            'trusted_connection': 'yes',
-            'extra_params': 'TrustServerCertificate=yes;', 
+            'extra_params': 'TrustServerCertificate=yes;',
         },
     }
 }
@@ -109,7 +103,7 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True  
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "https://unwhistled-stefan-supernotable.ngrok-free.dev",
@@ -123,7 +117,7 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "quenrix46@gmail.com"
-EMAIL_HOST_PASSWORD = "ujvhooagipoepnsf" 
+EMAIL_HOST_PASSWORD = "ujvhooagipoepnsf"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # AWS Settings (Reads from .env)
@@ -131,31 +125,15 @@ AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
 
-# AI Settings (Reads from .env - Fixes AttributeError)
+# AI Settings (Reads from .env)
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
-# SQL Server Compatibility Fixes
-# AWS Settings (Reads from .env)
-AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
-AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
-AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
-
-# AI Settings (Reads from .env - Fixes AttributeError)
-OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
-
-# SQL Server Compatibility Fixes
-# AWS Settings
-# AWS Settings
-env = environ.Env()
-environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
-AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
-AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
-
+# Zoom Settings
 ZOOM_CLIENT_ID = env("ZOOM_CLIENT_ID")
 ZOOM_CLIENT_SECRET = env("ZOOM_CLIENT_SECRET")
 ZOOM_ACCOUNT_ID = env("ZOOM_ACCOUNT_ID")
 
+# SQL Server Compatibility Fixes
 import mssql.base
 mssql.base.DatabaseWrapper._sql_server_versions['v17'] = 2022
 if 'v16' in mssql.base.DatabaseWrapper.data_types_suffix:
@@ -169,7 +147,6 @@ def fake_version(self):
 mssql.base.DatabaseWrapper.sql_server_version = property(fake_version)
 
 # REST Framework Settings
-# REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'users.authentication.CustomJWTAuthentication',
@@ -179,13 +156,12 @@ REST_FRAMEWORK = {
     ),
 }
 
-# JWT Settings
-# JWT Settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), 
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=3),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    'ROTATE_REFRESH_TOKENS': False,
+    'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_CLAIM': 'user_id',
 }
