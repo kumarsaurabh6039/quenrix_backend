@@ -674,3 +674,124 @@ class ForceCompleteExamView(APIView):
                 {'error': 'Force complete failed.', 'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+# ─── ADD THIS CLASS AT THE END OF views.py ────────────────────────────────────
+
+class GenerateQuestionsView(APIView):
+    """
+    POST /exams/generate-questions/
+    Uses OpenAI to generate exam questions based on a topic, type, and count.
+
+    Request body:
+    {
+        "subject":       "Python Programming",
+        "topic":         "List comprehensions and lambda functions",
+        "question_type": "mcq" | "descriptive" | "coding",
+        "count":         5
+    }
+
+    Response: { "questions": [ ... ] }
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        subject       = request.data.get("subject", "General")
+        topic         = request.data.get("topic", "")
+        question_type = request.data.get("question_type", "mcq")
+        count         = int(request.data.get("count", 5))
+
+        if not topic.strip():
+            return Response(
+                {"error": "topic is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        count = max(1, min(count, 15))  # clamp between 1 and 15
+
+        # ── Build type-specific prompt ────────────────────────────────────────
+        if question_type == "mcq":
+            format_instructions = """
+For each question return a JSON object with:
+  - "questionText": string
+  - "questionType": "mcq"
+  - "points": integer (between 1 and 5)
+  - "options": array of exactly 4 strings (option texts)
+  - "correctOption": integer index (0–3) of the correct option
+"""
+        elif question_type == "descriptive":
+            format_instructions = """
+For each question return a JSON object with:
+  - "questionText": string (open-ended, thought-provoking)
+  - "questionType": "discriptive"
+  - "points": integer (between 5 and 10)
+  - "options": []
+"""
+        else:  # coding
+            format_instructions = """
+For each question return a JSON object with:
+  - "questionText": string (a clear coding problem/challenge)
+  - "questionType": "coding"
+  - "points": integer (between 5 and 15)
+  - "options": []
+"""
+
+        prompt = f"""
+You are an expert exam question creator for professional technical assessments.
+
+Subject: {subject}
+Topic: {topic}
+Question Type: {question_type}
+Number of Questions: {count}
+
+Generate exactly {count} high-quality exam questions.
+{format_instructions}
+
+Return ONLY a valid JSON array of question objects — no markdown, no explanation, no preamble.
+Example structure for the array:
+[
+  {{ "questionText": "...", "questionType": "...", "points": 2, "options": [...], "correctOption": 1 }}
+]
+"""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+
+            raw = response.choices[0].message.content.strip()
+
+            # Strip any accidental markdown fences
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+
+            import json
+            questions = json.loads(raw)
+
+            # Sanitise: ensure options array always exists
+            for q in questions:
+                if "options" not in q:
+                    q["options"] = []
+                if q.get("questionType") != "mcq":
+                    q["options"] = []
+                    q.pop("correctOption", None)
+                elif "correctOption" not in q:
+                    q["correctOption"] = 0
+
+            return Response({"questions": questions}, status=status.HTTP_200_OK)
+
+        except json.JSONDecodeError as e:
+            return Response(
+                {"error": "AI returned malformed JSON.", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            import traceback
+            print(f"GenerateQuestionsView Error: {traceback.format_exc()}")
+            return Response(
+                {"error": "Question generation failed.", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
