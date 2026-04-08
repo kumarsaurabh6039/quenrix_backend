@@ -7,6 +7,7 @@ from .views import (
     ExamCreateView,
     ExamListView,
     ExamDetailView,
+    GenerateQuestionsView,
     QuestionListView,
     ExamAttemptCreateView,
     StudentAnswerCreateView,
@@ -17,8 +18,7 @@ from .views import (
     StudentBatchByUserIdView,
     StudentAnswerDetailListView,
     ActiveStudentExamListView,
-    ForceCompleteExamView,
-    GenerateQuestionsView,   # NEW: Quenrix Bot AI question generator
+    ForceCompleteExamView,  # ADDED: Browser close hone par exam data save karne ke liye
 )
 
 urlpatterns = [
@@ -29,20 +29,27 @@ urlpatterns = [
     path('answer/create/', StudentAnswerCreateView.as_view(), name='student-answer-create'),
     path('results/', ExamResultListView.as_view(), name='exam-results'),
 
+    # this api made by saurabh
     path('evaluate-complete/<int:attempt_id>/', EvaluateCompleteExamView.as_view(), name='evaluate-complete-exam'),
+    # --------------------------------
+
     path('evaluate-mcq/<int:attempt_id>/', EvaluateMCQAnswersView.as_view(), name='evaluate-mcq'),
     path('results/calculate/<int:attempt_id>/', CalculateExamResultView.as_view(), name='calculate-exam-result'),
     path('create-exam/', ExamCreateView.as_view(), name='exam-create'),
     path('student-exams/<int:course_id>/<int:batch_id>/', StudentExamListView.as_view(), name='student-exam-list'),
+
+    # NEW API FOR FETCHING ONLY TODAY'S UPCOMING / ONGOING EXAMS
     path('student-active-exams/<int:course_id>/<int:batch_id>/', ActiveStudentExamListView.as_view(), name='student-active-exam-list'),
+
     path('student-batches/<str:user_id>/', StudentBatchByUserIdView.as_view(), name='student-batches-by-user'),
     path('student-exam-attempts/<str:user_id>/', StudentExamAttemptListView.as_view(), name='student-exam-attempts'),
     path('evaluate-ai/<int:attempt_id>/', EvaluateAIDescriptiveCodingView.as_view(), name='evaluate-ai'),
     path('results/student/<str:user_id>/', StudentFinalResultView.as_view(), name='student-results'),
     path('results/student/<str:user_id>/exam/<int:exam_id>/', StudentFinalResultView.as_view(), name='student-exam-result'),
+
+    # this api for fetching feedback
     path('results/answers/<int:attempt_id>/', StudentAnswerDetailListView.as_view(), name='student-answer-details'),
     path('force-complete/', ForceCompleteExamView.as_view(), name='force-complete-exam'),
-
-    # ── Quenrix Bot: AI-powered question generation ──────────────────────────
+    
     path('generate-questions/', GenerateQuestionsView.as_view(), name='generate-questions'),
 ]
