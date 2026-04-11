@@ -11,7 +11,7 @@ class CreateJobSerializer(serializers.ModelSerializer):
 class CreateJobRequestSerializer(serializers.Serializer):
     jobtitle = serializers.CharField(max_length=255)
     job_type = serializers.CharField(max_length=100)
-    reqexp = serializers.IntegerField()
+    reqexp = serializers.IntegerField(required=False, allow_null=True, default=0) 
     company = serializers.CharField(max_length=255)
     location = serializers.CharField(max_length=255)
     from_passed_out_year = serializers.IntegerField()
