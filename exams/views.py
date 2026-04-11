@@ -70,40 +70,79 @@ def evaluate_mcq_orm(attempt_id):
 
 
 def evaluate_with_ai(question_text, student_answer, max_points):
-    """Evaluates descriptive/coding answers using AI."""
-
-    if not student_answer or student_answer.strip() == "":
-        return 0.0, "No answer provided by the student."
-
-    prompt = f"""
-    Question: {question_text}
-    Student Answer: {student_answer}
-
-    Evaluate the student's answer.
-    - Give a numeric score out of {max_points}. The score must not exceed {max_points}.
-    - Provide short feedback (1–2 sentences).
-    Format:
-    Score: <number>
-    Feedback: <text>
     """
+    Evaluates descriptive/coding answers using AI.
+    Returns a tuple of (score, feedback, model_answer).
+    model_answer is always generated so it can be shown to students who skipped
+    or answered incorrectly.
+    """
+
+    no_answer = not student_answer or student_answer.strip() == ""
+
+    if no_answer:
+        # Student did not attempt — skip scoring but still generate a model answer.
+        prompt = f"""
+Question: {question_text}
+
+The student did not provide an answer.
+
+Please provide a concise, well-structured model answer for this question
+(3–5 sentences or key bullet points, suitable for a student to learn from).
+
+Format your response exactly as:
+Model Answer: <your model answer here>
+"""
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            raw = response.choices[0].message.content or ""
+            match = re.search(r"Model Answer[:\-]?\s*([\s\S]+)", raw)
+            model_answer = match.group(1).strip() if match else raw.strip()
+        except Exception as e:
+            print(f"OpenAI API Error (model answer for no-answer): {e}")
+            model_answer = "Model answer could not be generated."
+        return 0.0, "No answer provided by the student.", model_answer
+
+    # Student submitted an answer — evaluate and also return a model answer.
+    prompt = f"""
+Question: {question_text}
+Student Answer: {student_answer}
+
+Evaluate the student's answer.
+1. Give a numeric score out of {max_points}. The score must not exceed {max_points}.
+2. Provide short constructive feedback (1–2 sentences).
+3. Provide a concise model answer (3–5 sentences or key points) that a student
+   can learn from, regardless of whether the student got it right or wrong.
+
+Format your response exactly as:
+Score: <number>
+Feedback: <text>
+Model Answer: <text>
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
+        raw = response.choices[0].message.content or ""
 
-        feedback_text = response.choices[0].message.content
-        match = re.search(r"Score[:\-]?\s*(\d+(\.\d+)?)", feedback_text)
-        score = float(match.group(1)) if match else 0.0
+        score_match    = re.search(r"Score[:\-]?\s*(\d+(\.\d+)?)", raw)
+        feedback_match = re.search(r"Feedback[:\-]?\s*(.*?)(?=\nModel Answer[:\-]?|\Z)", raw, re.DOTALL)
+        model_match    = re.search(r"Model Answer[:\-]?\s*([\s\S]+)", raw)
+
+        score        = float(score_match.group(1)) if score_match else 0.0
+        feedback     = feedback_match.group(1).strip() if feedback_match else raw.strip()
+        model_answer = model_match.group(1).strip() if model_match else ""
 
     except Exception as e:
         print(f"OpenAI API Error: {e}")
-        return 0.0, "AI evaluation failed due to API error."
+        return 0.0, "AI evaluation failed due to API error.", ""
 
     score = max(0.0, min(score, max_points))
-
-    return score, feedback_text
+    return score, feedback, model_answer
 
 
 # =========================================================================================
@@ -393,6 +432,7 @@ class StudentAnswerDetailListView(APIView):
                     'correct_answer': None,
                     'ai_score': None,
                     'ai_feedback': None,
+                    'model_answer': None,
                     'options': [],
                     'selected_option_id': None,
                     'correct_option_id': None,
@@ -447,12 +487,27 @@ class StudentAnswerDetailListView(APIView):
                         raw_answer = answer.descriptive_answer or answer.code_answer or ""
                         item['student_answer'] = raw_answer if raw_answer.strip() else None
                         item['ai_score'] = float(answer.ai_score) if answer.ai_score is not None else 0.0
-                        item['ai_feedback'] = answer.ai_feedback or "AI evaluation is pending."
                         item['points_earned'] = float(answer.points_earned) if answer.points_earned is not None else 0.0
                         item['is_correct'] = item['points_earned'] > 0
 
-                        # Improvement tip based on score ratio
+                        # Parse stored ai_feedback — it may contain an embedded model answer.
+                        raw_feedback = answer.ai_feedback or "AI evaluation is pending."
+                        if "[MODEL_ANSWER]" in raw_feedback:
+                            parts = raw_feedback.split("[MODEL_ANSWER]\n", 1)
+                            item['ai_feedback'] = parts[0].strip()
+                            stored_model_answer = parts[1].strip()
+                        else:
+                            item['ai_feedback'] = raw_feedback
+                            stored_model_answer = None
+
+                        # Show model answer only when the student skipped or didn't fully score.
                         score_ratio = item['points_earned'] / max_pts if max_pts > 0 else 0
+                        if item['student_answer'] is None or score_ratio < 1.0:
+                            item['model_answer'] = stored_model_answer
+                        else:
+                            item['model_answer'] = None
+
+                        # Improvement tip based on score ratio
                         if item['student_answer'] is None:
                             item['improvement_tip'] = (
                                 f"You did not attempt this {q_label} question. "
@@ -476,7 +531,8 @@ class StudentAnswerDetailListView(APIView):
                         else:
                             item['improvement_tip'] = "Excellent! Full marks on this question. Your answer was comprehensive and accurate."
                     else:
-                        # No answer submitted at all
+                        # No StudentAnswers record at all — generate a model answer on-the-fly
+                        # so the student can still learn what was expected.
                         item['student_answer'] = None
                         item['points_earned'] = 0.0
                         item['is_correct'] = False
@@ -485,6 +541,13 @@ class StudentAnswerDetailListView(APIView):
                             f"You did not submit an answer for this {q_label} question. "
                             "Always attempt every question for a chance at partial credit."
                         )
+                        try:
+                            _, _, live_model_answer = evaluate_with_ai(
+                                question.questiontext, "", max_pts
+                            )
+                            item['model_answer'] = live_model_answer if live_model_answer else None
+                        except Exception:
+                            item['model_answer'] = None
 
                 results.append(item)
 
@@ -526,15 +589,21 @@ class EvaluateCompleteExamView(APIView):
                 student_answer = ans.descriptive_answer or ans.code_answer or ""
                 max_points = ans.questionid.points or 0
 
-                ai_score, ai_feedback = evaluate_with_ai(question_text, student_answer, max_points)
+                ai_score, ai_feedback, model_answer = evaluate_with_ai(question_text, student_answer, max_points)
 
                 try:
                     ai_score_decimal = Decimal(ai_score)
                 except Exception:
                     ai_score_decimal = Decimal(0)
 
+                # Embed the model answer inside ai_feedback using a delimiter so it
+                # can be extracted later without requiring a new database column.
+                combined_feedback = ai_feedback
+                if model_answer:
+                    combined_feedback += f"\n\n[MODEL_ANSWER]\n{model_answer}"
+
                 ans.ai_score = ai_score_decimal
-                ans.ai_feedback = ai_feedback
+                ans.ai_feedback = combined_feedback
                 ans.points_earned = ai_score_decimal
                 ans.evaluated = True
                 ans.updated_at = timezone.now()
