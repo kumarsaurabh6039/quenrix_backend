@@ -11,7 +11,6 @@ class Announcement(models.Model):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        managed = False
         db_table = 'announcements'
 
 
@@ -25,5 +24,4 @@ class AnnouncementBatches(models.Model):
     )
 
     class Meta:
-        managed = False
         db_table = 'announcement_batches'
